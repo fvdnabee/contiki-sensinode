@@ -101,6 +101,8 @@ rpl_purge_routes(void)
   }
 
 #if UIP_IPV6_MULTICAST_RPL
+  // TODO: should this loop be rewritten into a while loop to match the new mechanism that is being used to purge the non-multicast routing table?
+  int i;
   for(i = 0; i < UIP_DS6_MCAST_ROUTES; i++) {
     if(uip_ds6_mcast_table[i].isused) {
       if(uip_ds6_mcast_table[i].lifetime <= 1) {
@@ -130,6 +132,8 @@ rpl_remove_routes(rpl_dag_t *dag)
   }
 
 #if UIP_IPV6_MULTICAST_RPL
+  // TODO: change from for to while loop to use the same mechanism for removing multicast routes as unicast routes?
+  int i;
   for(i = 0; i < UIP_DS6_MCAST_ROUTES; i++) {
     if(uip_ds6_mcast_table[i].dag == dag) {
       uip_ds6_mcast_table[i].isused = 0;

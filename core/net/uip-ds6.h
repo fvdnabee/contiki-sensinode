@@ -181,14 +181,6 @@ typedef struct uip_ds6_mcastrt {
   void * dag; /* Pointer to an rpl_dag_t struct */
 } uip_ds6_mcastrt_t;
 
-/** \brief An entry in the default router list */
-typedef struct uip_ds6_defrt {
-  uint8_t isused;
-  uip_ipaddr_t ipaddr;
-  struct stimer lifetime;
-  uint8_t isinfinite;
-} uip_ds6_defrt_t;
-
 /** \brief A prefix list entry */
 #if UIP_CONF_ROUTER
 typedef struct uip_ds6_prefix {
@@ -347,18 +339,6 @@ uip_ds6_aaddr_t *uip_ds6_aaddr_lookup(uip_ipaddr_t *ipaddr);
 /** @} */
 
 
-<<<<<<< HEAD
-=======
-/** \name Routing Table basic routines */
-/** @{ */
-uip_ds6_route_t *uip_ds6_route_lookup(uip_ipaddr_t *destipaddr);
-uip_ds6_route_t *uip_ds6_route_add(uip_ipaddr_t *ipaddr, uint8_t length,
-                                   uip_ipaddr_t *next_hop, uint8_t metric);
-void uip_ds6_route_rm(uip_ds6_route_t *route);
-void uip_ds6_route_rm_by_nexthop(uip_ipaddr_t *nexthop);
-
-/** @} */
-
 /** \name Multicast Routing Table Manipulation */
 /** @{ */
 uip_ds6_mcastrt_t *uip_ds6_mcast_route_lookup(uip_ipaddr_t *group);
@@ -366,7 +346,6 @@ uip_ds6_mcastrt_t *uip_ds6_mcast_route_add(uip_ipaddr_t *group);
 #define uip_ds6_mcast_route_rm(group) do { (group)->isused = 0; } while(0)
 /** @} */
 
->>>>>>> Datatypes and function prototypes for multicast routing table manipulation
 /** \brief set the last 64 bits of an IP address based on the MAC address */
 void uip_ds6_set_addr_iid(uip_ipaddr_t *ipaddr, uip_lladdr_t *lladdr);
 

@@ -99,13 +99,9 @@ static uip_ds6_aaddr_t *locaaddr;
 static uip_ds6_prefix_t *locprefix;
 static uip_ds6_nbr_t *locnbr;
 static uip_ds6_defrt_t *locdefrt;
-<<<<<<< HEAD
-=======
-static uip_ds6_route_t *locroute;
-#if UIP_IPV6_MULTICAST_RPL
+#if UIP_IPV6_MULTICAST_RPL // TODO: move this to uip-ds6-route.c and remove locmcastrt variable (locroute was also removed)?
 static uip_ds6_mcastrt_t *locmcastrt;
 #endif
->>>>>>> Implementation of multicast routing table manipulation
 
 /*---------------------------------------------------------------------------*/
 void
@@ -678,107 +674,7 @@ uip_ds6_aaddr_lookup(uip_ipaddr_t *ipaddr)
 }
 
 /*---------------------------------------------------------------------------*/
-<<<<<<< HEAD
-=======
-uip_ds6_route_t *
-uip_ds6_route_lookup(uip_ipaddr_t *destipaddr)
-{
-  uip_ds6_route_t *locrt = NULL;
-  uint8_t longestmatch = 0;
-
-  PRINTF("DS6: Looking up route for ");
-  PRINT6ADDR(destipaddr);
-  PRINTF("\n");
-
-  for(locroute = uip_ds6_routing_table;
-      locroute < uip_ds6_routing_table + UIP_DS6_ROUTE_NB; locroute++) {
-    if((locroute->isused) && (locroute->length >= longestmatch)
-       &&
-       (uip_ipaddr_prefixcmp
-        (destipaddr, &locroute->ipaddr, locroute->length))) {
-      longestmatch = locroute->length;
-      locrt = locroute;
-    }
-  }
-
-  if(locrt != NULL) {
-    PRINTF("DS6: Found route:");
-    PRINT6ADDR(destipaddr);
-    PRINTF(" via ");
-    PRINT6ADDR(&locrt->nexthop);
-    PRINTF("\n");
-  } else {
-    PRINTF("DS6: No route found\n");
-  }
-
-  return locrt;
-}
-
-/*---------------------------------------------------------------------------*/
-uip_ds6_route_t *
-uip_ds6_route_add(uip_ipaddr_t *ipaddr, uint8_t length, uip_ipaddr_t *nexthop,
-                  uint8_t metric)
-{
-  if(uip_ds6_list_loop
-     ((uip_ds6_element_t *)uip_ds6_routing_table, UIP_DS6_ROUTE_NB,
-      sizeof(uip_ds6_route_t), ipaddr, length,
-      (uip_ds6_element_t **)&locroute) == FREESPACE) {
-    locroute->isused = 1;
-    uip_ipaddr_copy(&(locroute->ipaddr), ipaddr);
-    locroute->length = length;
-    uip_ipaddr_copy(&(locroute->nexthop), nexthop);
-    locroute->metric = metric;
-
-#ifdef UIP_DS6_ROUTE_STATE_TYPE
-    memset(&locroute->state, 0, sizeof(UIP_DS6_ROUTE_STATE_TYPE));
-#endif
-
-    PRINTF("DS6: adding route: ");
-    PRINT6ADDR(ipaddr);
-    PRINTF(" via ");
-    PRINT6ADDR(nexthop);
-    PRINTF("\n");
-    ANNOTATE("#L %u 1;blue\n", nexthop->u8[sizeof(uip_ipaddr_t) - 1]);
-  }
-
-  return locroute;
-}
-
-/*---------------------------------------------------------------------------*/
-void
-uip_ds6_route_rm(uip_ds6_route_t *route)
-{
-  route->isused = 0;
-#if (DEBUG & DEBUG_ANNOTATE) == DEBUG_ANNOTATE
-  /* we need to check if this was the last route towards "nexthop" */
-  /* if so - remove that link (annotation) */
-  for(locroute = uip_ds6_routing_table;
-      locroute < uip_ds6_routing_table + UIP_DS6_ROUTE_NB;
-      locroute++) {
-    if(locroute->isused && uip_ipaddr_cmp(&locroute->nexthop, &route->nexthop))      {
-      /* we found another link using the specific nexthop, so keep the #L */
-      return;
-    }
-  }
-  ANNOTATE("#L %u 0\n",route->nexthop.u8[sizeof(uip_ipaddr_t) - 1]);
-#endif
-}
-/*---------------------------------------------------------------------------*/
-void
-uip_ds6_route_rm_by_nexthop(uip_ipaddr_t *nexthop)
-{
-  for(locroute = uip_ds6_routing_table;
-      locroute < uip_ds6_routing_table + UIP_DS6_ROUTE_NB;
-      locroute++) {
-    if(locroute->isused && uip_ipaddr_cmp(&locroute->nexthop, nexthop)) {
-      locroute->isused = 0;
-    }
-  }
-  ANNOTATE("#L %u 0\n",nexthop->u8[sizeof(uip_ipaddr_t) - 1]);
-}
-
-/*---------------------------------------------------------------------------*/
-#if UIP_IPV6_MULTICAST_RPL
+#if UIP_IPV6_MULTICAST_RPL // TODO: move this to uip-ds6-route.c ?
 uip_ds6_mcastrt_t *
 uip_ds6_mcast_route_lookup(uip_ipaddr_t *group)
 {
@@ -806,7 +702,7 @@ uip_ds6_mcast_route_add(uip_ipaddr_t *group)
 }
 #endif
 /*---------------------------------------------------------------------------*/
->>>>>>> Implementation of multicast routing table manipulation
+
 void
 uip_ds6_select_src(uip_ipaddr_t *src, uip_ipaddr_t *dst)
 {
