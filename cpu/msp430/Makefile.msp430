@@ -165,14 +165,14 @@ PROJECT_OBJECTFILES += ${addprefix $(OBJECTDIR)/,$(CONTIKI_TARGET_MAIN:.c=.o)}
 
 %-stripped.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
-	$(STRIP) --strip-unneeded -g -x $@
+	$(STRIP) --strip-unneeded -x $@
 
 %.cm: %.co
 	$(LD) -i -r --unresolved-symbols=ignore-in-object-files -mmsp430x149 -o $@ $^
-	$(STRIP) --strip-unneeded -g -x $@
+	$(STRIP) --strip-unneeded -x $@
 
 %-stripped.o: %.o
-	$(STRIP) --strip-unneeded -g -x -o $@ $<
+	$(STRIP) --strip-unneeded -x -o $@ $<
 
 %.o: ${CONTIKI_TARGET}/loader/%.S
 	$(AS) -o $(notdir $(<:.S=.o)) $<

@@ -136,6 +136,10 @@ typedef unsigned short uip_stats_t;
 
 #endif
 
+#ifndef RF_CHANNEL
+#define RF_CHANNEL              26
+#endif /* RF_CHANNEL */
+
 #define UIP_CONF_MAX_LISTENPORTS      40
 #define UIP_CONF_MAX_CONNECTIONS      40
 #define UIP_CONF_BYTE_ORDER           UIP_LITTLE_ENDIAN
@@ -175,5 +179,13 @@ typedef unsigned long clock_time_t;
 
 /* Not part of C99 but actually present */
 int strcasecmp(const char*, const char*);
+
+
+/* include the project config */
+/* PROJECT_CONF_H might be defined in the project Makefile */
+#ifdef PROJECT_CONF_H
+#include PROJECT_CONF_H
+#endif /* PROJECT_CONF_H */
+
 
 #endif /* __CONTIKI_CONF_H__ */
