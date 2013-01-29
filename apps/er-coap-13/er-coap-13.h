@@ -173,6 +173,7 @@ typedef enum {
   COAP_OPTION_ACCEPT = 16,        /* 0-2 B */
   COAP_OPTION_TOKEN = 19,         /* 1-8 B */
   COAP_OPTION_LOCATION_QUERY = 20, /* 1-270 B */
+  COAP_OPTION_CONDITION = 22,	  /* 1-5 B, Conditional observe */
   COAP_OPTION_BLOCK2 = 23,        /* 1-3 B */
   COAP_OPTION_BLOCK1 = 27,        /* 1-3 B */
   COAP_OPTION_SIZE = 28,          /* 0-4 B */
@@ -251,6 +252,8 @@ typedef struct {
   size_t uri_query_len;
   const char *uri_query;
   uint8_t if_none_match;
+
+  uint16_t condition; /* Conditional observe */
 
   uint16_t payload_len;
   uint8_t *payload;

@@ -117,6 +117,12 @@ PROCESS_THREAD(coap_client_example, ev, data)
   static coap_packet_t request[1]; /* This way the packet can be treated as pointer as usual. */
   SERVER_NODE(&server_ipaddr);
 
+/* Conditional observe */
+#ifdef CONDITION
+  coap_condition_t cond;
+  uint16_t encoded_cond;
+#endif
+
   /* receives all CoAP messages */
   coap_receiver_init();
 
@@ -143,6 +149,29 @@ PROCESS_THREAD(coap_client_example, ev, data)
 
       PRINT6ADDR(&server_ipaddr);
       PRINTF(" : %u\n", UIP_HTONS(REMOTE_PORT));
+
+      /* Conditional observe */
+#ifdef CONDITION
+      /* Condition 1 = X > 22 */
+      cond.cond_type = CONDITION_PERIODIC;
+      cond.reliability_flag = NON;
+      cond.value_type = INTEGER;
+      cond.value = 10;
+
+      coap_encode_condition(&cond, &encoded_cond);
+      coap_set_header_condition(request, encoded_cond);
+
+      /* Condition 2 = X < 27 */
+      /*
+      cond.cond_type = CONDITION_ALLVALUES_LESS;
+      cond.reliability_flag = CON;
+      cond.value_type = INTEGER;
+      cond.value = 27;
+
+      coap_encode_condition(&cond, &encoded_cond);
+      coap_set_header_condition(request, encoded_cond);
+      */
+#endif
 
       COAP_BLOCKING_REQUEST(&server_ipaddr, REMOTE_PORT, request, client_chunk_handler);
 

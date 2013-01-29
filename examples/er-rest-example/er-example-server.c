@@ -42,6 +42,8 @@
 #include "contiki.h"
 #include "contiki-net.h"
 
+/* Use data from SHT11 sensor or use stored values for temperature resource */
+//#define RES_TEMP_USE_SHT11_DATA 1
 
 /* Define which resources to include to meet memory constraints. */
 #define REST_RES_HELLO 0
@@ -65,6 +67,8 @@
 #endif
 
 #include "erbium.h"
+
+#include "sys/energest.h" // Conditional observe
 
 
 #if defined (PLATFORM_HAS_BUTTON)
@@ -509,9 +513,142 @@ pushing_periodic_handler(resource_t *r)
   coap_set_payload(notification, content, snprintf(content, sizeof(content), "TICK %u", obs_counter));
 
   /* Notify the registered observers with the given message type, observe option, and payload. */
-  REST.notify_subscribers(r, obs_counter, notification);
+  REST.notify_subscribers(r, obs_counter, notification, obs_counter); // Conditional observe
 }
 #endif
+
+/******************************************************************************/
+/* Conditional observe example resource */
+#if REST_RES_PUSHING
+/*
+ * Example for a periodic resource.
+ * It takes an additional period parameter, which defines the interval to call [name]_periodic_handler().
+ * A default post_handler takes care of subscriptions by managing a list of subscribers to notify.
+ */
+PERIODIC_RESOURCE(temp, METHOD_GET, "sensors/temp", "title=\"Temperature\";obs", 5*CLOCK_SECOND);
+
+/*const static uint8_t data[100] = {
+21, 23, 27, 27, 29, 21, 23, 27, 22, 25, 24, 26, 23, 25, 29, 29, 26, 27, 21, 26, 20, 22, 21, 28, 21, 24, 21, 21, 29, 22, 25, 28, 26, 22, 26, 25, 24, 29, 22, 27, 25, 27, 24, 28, 22, 23, 28, 29, 20, 21, 25, 20, 21, 26, 28, 23, 20, 20, 24, 20, 22, 24, 29, 28, 22, 25, 23, 27, 25, 26, 25, 20, 24, 29, 29, 27, 22, 27, 26, 23, 26, 21, 24, 28, 28, 23, 22, 20, 23, 26, 29, 25, 26, 28, 24, 29, 23, 22, 26, 23
+};
+*/
+const static uint8_t data[2008] = {
+19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 
+18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 17, 18, 17, 17, 17, 17, 17, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 17, 18, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 
+17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 18, 19, 20, 20, 20, 20, 20, 20, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 26, 26, 26, 26, 26, 25, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 25, 26, 26, 26, 26, 26, 26, 26, 26, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 
+24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 24, 24, 25, 24, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 
+24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 22, 21, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 
+21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20};
+
+static unsigned max_age = COAP_DEFAULT_MAX_AGE;
+unsigned data_iterator = 0;
+#ifndef CONDITION
+static uint16_t tmp_last = 0;
+static uint32_t time_last = 0;
+#endif
+
+void
+temp_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
+
+  static unsigned tmp; // state of temperature resource at the moment
+  static char msg[11];
+
+#if RES_TEMP_USE_SHT11_DATA // use sht11 sensor for temperature resource
+  i2c_disable(); //http://comments.gmane.org/gmane.os.contiki.devel/14819
+  sht11_init();
+  tmp = (unsigned) (-39.60 + 0.01 * sht11_temp());
+#else // use stored values for temperature resource
+  tmp = data[data_iterator++ % 2008];
+#endif
+
+#ifndef CONDITION
+  tmp_last = tmp;
+  time_last = clock_seconds();
+  coap_set_header_max_age(response, max_age);
+#endif
+  snprintf(msg, sizeof(msg), "%u", tmp);
+  REST.set_response_payload(response, msg, strlen(msg));
+
+  /* A post_handler that handles subscriptions will be called for periodic resources by the REST framework. */
+}
+
+/*
+ * Additionally, a handler function named [resource name]_handler must be implemented for each PERIODIC_RESOURCE.
+ * It will be called by the REST manager process with the defined period.
+ */
+void
+temp_periodic_handler(resource_t *r)
+{
+  static char content[5];
+  static uint16_t obs_counter = 0;
+  static unsigned tmp; // state of temperature resource at the moment
+  unsigned long cpu, lpm, transmit, listen;
+  static uint8_t stop = 0;
+#if RES_TEMP_USE_SHT11_DATA // use sht11 sensor for temperature resource
+  i2c_disable(); //http://comments.gmane.org/gmane.os.contiki.devel/14819
+  sht11_init();
+  tmp = (unsigned) (-39.60 + 0.01 * sht11_temp());
+  PRINTF("/%s: retreived temperature value from sensor\n", r->url);
+#else // use stored values for temperature resource
+  tmp = data[data_iterator];
+
+  data_iterator = (data_iterator + 1) ;
+  //printf("/%s: retreived temperature value from data array:%u\n", r->url, data[data_iterator-1]);
+  if(!stop) printf("==>from data array:val[%u] = %u\n", data_iterator-1, data[data_iterator-1]);
+
+  if(!stop) {
+    energest_flush();
+
+    cpu = energest_type_time(ENERGEST_TYPE_CPU)/RTIMER_ARCH_SECOND;
+    lpm = energest_type_time(ENERGEST_TYPE_LPM)/RTIMER_ARCH_SECOND;
+    transmit = energest_type_time(ENERGEST_TYPE_TRANSMIT)/RTIMER_ARCH_SECOND;
+    listen = energest_type_time(ENERGEST_TYPE_LISTEN)/RTIMER_ARCH_SECOND;
+
+    printf("cpu = %lu lpm = %lu tx = %lu rx = %lu\n", cpu, lpm, transmit, listen);
+  }
+  if (data_iterator >= 2008) {
+    if(!stop) {
+      energest_flush();
+
+      cpu = energest_type_time(ENERGEST_TYPE_CPU);
+      lpm = energest_type_time(ENERGEST_TYPE_LPM);
+      transmit = energest_type_time(ENERGEST_TYPE_TRANSMIT);
+      listen = energest_type_time(ENERGEST_TYPE_LISTEN);
+
+      printf(">>>Final: cpu = %lu lpm = %lu tx = %lu rx = %lu\n", cpu, lpm, transmit, listen);
+      stop = 1;
+      printf("==>End<==\n");
+
+      coap_packet_t last_message[1]; /* This way the packet can be treated as pointer as usual. */
+      coap_init_message(last_message, COAP_TYPE_NON, CONTENT_2_05, 0 );
+      coap_set_payload(last_message, content, snprintf(content, sizeof(content), "%u", 100));
+
+      REST.notify_subscribers(r, obs_counter, last_message, tmp);
+    } /* stop */
+    return;
+  }
+#endif
+
+#ifndef CONDITION /*For Normal Observe, check if value has changed before sending notification */
+  if(tmp_last == tmp && ((clock_seconds() - time_last) < max_age)) {
+    return;
+  } else {
+    tmp_last = tmp;
+    time_last = clock_seconds();
+  }
+#endif /*ifndec condition */
+  /* Build notification. */
+  coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
+  coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
+  coap_set_header_max_age(notification, max_age);
+  coap_set_payload(notification, content, snprintf(content, sizeof(content), "%u", tmp));
+
+  ++obs_counter;
+  /* Notify the registered observers with the given message type, observe option, and payload. */
+  REST.notify_subscribers(r, obs_counter, notification, tmp);
+}
+#endif /*if rest pushing*/
 
 /******************************************************************************/
 #if REST_RES_EVENT && defined (PLATFORM_HAS_BUTTON)
@@ -551,7 +688,7 @@ event_event_handler(resource_t *r)
   coap_set_payload(notification, content, snprintf(content, sizeof(content), "EVENT %u", event_counter));
 
   /* Notify the registered observers with the given message type, observe option, and payload. */
-  REST.notify_subscribers(r, event_counter, notification);
+  REST.notify_subscribers(r, event_counter, notification, event_counter); // Conditional observe
 }
 #endif /* PLATFORM_HAS_BUTTON */
 
@@ -831,7 +968,8 @@ PROCESS_THREAD(rest_server_example, ev, data)
   rest_activate_resource(&resource_chunks);
 #endif
 #if REST_RES_PUSHING
-  rest_activate_periodic_resource(&periodic_resource_pushing);
+  //rest_activate_periodic_resource(&periodic_resource_pushing);
+  rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
 #endif
 #if defined (PLATFORM_HAS_BUTTON) && REST_RES_EVENT
   rest_activate_event_resource(&resource_event);
