@@ -21,8 +21,8 @@ WITH_UIP6=1
 UIP_CONF_IPV6=1
 
 # radio configuration
-CFLAGS += -DRF_CHANNEL=20
-CFLAGS += -DIEEE802154_CONF_PANID=0xBEEF
+CFLAGS += -DRF_CHANNEL=26
+CFLAGS += -DIEEE802154_CONF_PANID=0xABCD
 
 # variable for this Makefile
 # configure CoAP implementation (3|7) (er-coap-07 also supports CoAP draft 08)

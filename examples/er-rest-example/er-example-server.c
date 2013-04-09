@@ -44,6 +44,7 @@
 
 
 /* Define which resources to include to meet memory constraints. */
+#define REST_RES_SERVERINFO       1
 #define REST_RES_HELLO 0
 #define REST_RES_MIRROR 0 /* causes largest code size */
 #define REST_RES_CHUNKS 0
@@ -110,6 +111,107 @@
 #define PRINT6ADDR(addr)
 #define PRINTLLADDR(addr)
 #endif
+
+
+
+
+#if REST_RES_SERVERINFO
+/*
+ * Resources are defined by the RESOURCE macro.
+ * Signature: resource name, the RESTful methods it handles, and its URI path (omitting the leading slash).
+ */
+
+RESOURCE(serverinfo, METHOD_GET, ".well-known/serverInfo","title=\"serverInfo\"");
+/*
+ * A handler function named [resource name]_handler must be implemented for each RESOURCE.
+ * A buffer for the response payload is provided through the buffer pointer. Simple resources can ignore
+ * preferred_size and offset, but must respect the REST_MAX_CHUNK_SIZE limit for the buffer.
+ * If a smaller block size is requested for CoAP, the REST framework automatically splits the data.
+ */
+void
+serverinfo_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  const char *len = NULL;
+  uip_ds6_addr_t * addr;
+  addr = uip_ds6_get_global(-1); //of uip_ds6_get_global ?
+  uint16_t nextPos = 0;
+  uint16_t i;
+  unsigned char serverInfo[63];
+  unsigned char *serverInfoPart1="AL|16|A|";
+  unsigned char *serverInfoPart2="|NT|S|N|sensor";
+  unsigned char charretje[6];
+
+	PRINTF("Received serverInfo GET\n");
+
+  for ( i = 0; i < 8; i++)
+  {
+		serverInfo[nextPos++] = serverInfoPart1[i];
+  }
+  i=0;
+  for ( i = 0 ; i < 16 ; i++ )
+  {
+    itoa(addr->ipaddr.u8[i],charretje,16);
+
+  if(strlen(charretje)==0){ //
+    serverInfo[nextPos++] = '0';
+    serverInfo[nextPos++] = '0';
+  }else if(strlen(charretje)==1){
+    serverInfo[nextPos++] = '0';
+    serverInfo[nextPos++] = charretje[0];
+  }else{
+		serverInfo[nextPos++] = charretje[0];
+		serverInfo[nextPos++] = charretje[1];		
+	} 
+    if((i+1)%2 == 0 && i<15){
+      serverInfo[nextPos++] = ':';
+    }
+
+
+  }
+
+  for ( i = 0; i < 14; i++)
+  {
+	serverInfo[nextPos++] = serverInfoPart2[i];
+  }
+  
+	itoa(addr->ipaddr.u8[15],charretje,16);
+  if(strlen(charretje)==0){ //
+    serverInfo[nextPos++] = '0';
+    serverInfo[nextPos++] = '0';
+  }else if(strlen(charretje)==1){
+    serverInfo[nextPos++] = '0';
+    serverInfo[nextPos++] = charretje[0];
+  }else{
+		serverInfo[nextPos++] = charretje[0];
+		serverInfo[nextPos++] = charretje[1];		
+	}
+
+  
+  serverInfo[nextPos] = '\0';
+
+  /* Some data that has the length up to REST_MAX_CHUNK_SIZE. For more, see the chunk resource. */
+  //serverInfo format: AL|AddressLength|A|Address|NT|NameType|N|Name
+  //char const * const message = "AL|25|A|aaaa::0212:7402:0002:0202|NT|S|N|2";
+  char const * const message = serverInfo;
+  int length = nextPos; /*           |<-------->| */
+
+  /* The query string can be retrieved by rest_get_query() or parsed for its key-value pairs. */
+  if (REST.get_query_variable(request, "len", &len)) {
+    length = atoi(len);
+    if (length<0) length = 0;
+    if (length>REST_MAX_CHUNK_SIZE) length = REST_MAX_CHUNK_SIZE;
+    memcpy(buffer, message, length);
+  } else {
+    memcpy(buffer, message, length);
+  }
+
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN); /* text/plain is the default, hence this option could be omitted. */
+  REST.set_header_etag(response, (uint8_t *) &length, 1);
+  REST.set_response_payload(response, buffer, length);
+
+}
+#endif 
+
 
 /******************************************************************************/
 #if REST_RES_HELLO
@@ -788,6 +890,33 @@ radio_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred
 }
 #endif
 
+//JEN: code needed for multicast group subscription:
+static uip_ds6_maddr_t *
+join_mcast_group()
+{
+  uip_ipaddr_t addr;
+  uip_ds6_maddr_t * rv;
+
+  /* First, set our v6 global */
+  uip_ip6addr(&addr, 0xaaaa, 0, 0, 0, 0, 0, 0, 0);
+  uip_ds6_set_addr_iid(&addr, &uip_lladdr);
+  uip_ds6_addr_add(&addr, 0, ADDR_AUTOCONF);
+
+  /*
+   * IPHC will use stateless multicast compression for this destination
+   * (M=1, DAC=0), with 32 inline bits (1E 89 AB CD)
+   */
+  uip_ip6addr(&addr,0xFF1E,0,0,0,0,0,0x89,0xABCD);
+  rv = uip_ds6_maddr_add(&addr);
+
+  if(rv) {
+    PRINTF("Joined multicast group ");
+    PRINT6ADDR(&uip_ds6_maddr_lookup(&addr)->ipaddr);
+    PRINTF("\n");
+  }
+  return rv;
+}
+//JEN
 
 
 PROCESS(rest_server_example, "Erbium Example Server");
@@ -798,6 +927,12 @@ PROCESS_THREAD(rest_server_example, ev, data)
   PROCESS_BEGIN();
 
   PRINTF("Starting Erbium Example Server\n");
+  
+  //joining multicast server
+  if(join_mcast_group() == NULL) {
+    PRINTF("Failed to join multicast group\n");
+    PROCESS_EXIT();
+  }
 
 #ifdef RF_CHANNEL
   PRINTF("RF channel: %u\n", RF_CHANNEL);
@@ -821,6 +956,9 @@ PROCESS_THREAD(rest_server_example, ev, data)
   rest_init_engine();
 
   /* Activate the application-specific resources. */
+#if REST_RES_SERVERINFO
+  rest_activate_resource(&resource_serverinfo);
+#endif
 #if REST_RES_HELLO
   rest_activate_resource(&resource_helloworld);
 #endif

@@ -50,10 +50,10 @@
 #define COAP_MAX_HEADER_SIZE    70
 */
 
-/*
+
 #undef UIP_CONF_BUFFER_SIZE
-#define UIP_CONF_BUFFER_SIZE    1280
-*/
+#define UIP_CONF_BUFFER_SIZE    180
+
 
 /* Multiplies with chunk size, be aware of memory constraints. */
 #undef COAP_MAX_OPEN_TRANSACTIONS
