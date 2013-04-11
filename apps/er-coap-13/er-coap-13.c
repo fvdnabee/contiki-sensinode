@@ -356,6 +356,7 @@ coap_serialize_message(void *packet, uint8_t *buffer)
   COAP_SERIALIZE_BLOCK_OPTION(  COAP_OPTION_BLOCK1,         block1, "Block1")
   COAP_SERIALIZE_INT_OPTION(    COAP_OPTION_SIZE,           size, "Size")
   COAP_SERIALIZE_STRING_OPTION( COAP_OPTION_PROXY_URI,      proxy_uri, '\0', "Proxy-Uri")
+  COAP_SERIALIZE_INT_OPTION(COAP_OPTION_CONDITION, condition, "Condition"); // Conditional observe
 
   PRINTF("-Done serializing at %p----\n", option);
 
@@ -603,6 +604,10 @@ coap_parse_message(void *packet, uint8_t *data, uint16_t data_len)
       case COAP_OPTION_OBSERVE:
         coap_pkt->observe = coap_parse_int_option(current_option, option_length);
         PRINTF("Observe [%lu]\n", coap_pkt->observe);
+        break;
+      case COAP_OPTION_CONDITION: // Conditional observe
+        coap_pkt->condition = coap_parse_int_option(current_option, option_length);
+        PRINTF("Condition [%u]\n", coap_pkt->condition);
         break;
       case COAP_OPTION_BLOCK2:
         coap_pkt->block2_num = coap_parse_int_option(current_option, option_length);

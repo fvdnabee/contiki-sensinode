@@ -65,6 +65,10 @@
 #define PRINTBITS(buf,len)
 #endif
 
+/* Conditional observe */
+static int condition_packets = 0;
+static int ack_packets = 0;
+
 PROCESS(coap_receiver, "CoAP Receiver");
 
 /*----------------------------------------------------------------------------*/
@@ -105,6 +109,11 @@ coap_receive(void)
       PRINTF("  Parsed: v %u, t %u, tkl %u, c %u, mid %u\n", message->version, message->type, message->token_len, message->code, message->mid);
       PRINTF("  URL: %.*s\n", message->uri_path_len, message->uri_path);
       PRINTF("  Payload: %.*s\n", message->payload_len, message->payload);
+
+      /* Conditional observe */
+      if(message->observe > 0) condition_packets++;
+      if(message->type == COAP_TYPE_ACK) ack_packets++;
+      printf("Condition=%d \tPackets=%d Ack=%d\n", message->condition, condition_packets, ack_packets);
 
       /* Handle requests. */
       if (message->code >= COAP_GET && message->code <= COAP_DELETE)

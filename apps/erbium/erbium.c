@@ -222,6 +222,8 @@ PROCESS_THREAD(rest_manager_process, ev, data)
           PRINTF("Periodic: etimer expired for /%s (period: %lu)\n", periodic_resource->resource->url, periodic_resource->period);
 
           /* Call the periodic_handler function if it exists. */
+          /* Conditional observe: No need to call periodic Handler if there are no observers. */
+          //if (being_observed(periodic_resource->resource->url) && periodic_resource->periodic_handler) { // TODO: receive being_observed from Girum
           if (periodic_resource->periodic_handler) {
             (periodic_resource->periodic_handler)(periodic_resource->resource);
           }

@@ -59,6 +59,9 @@
 #undef COAP_MAX_OPEN_TRANSACTIONS
 #define COAP_MAX_OPEN_TRANSACTIONS   4
 
+/* Specifies if Conditional Observe is supported */
+#define CONDITION
+
 /* Must be <= open transaction number, default is COAP_MAX_OPEN_TRANSACTIONS-1. */
 /*
 #undef COAP_MAX_OBSERVERS
