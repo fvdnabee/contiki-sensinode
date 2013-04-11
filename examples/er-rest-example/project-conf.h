@@ -52,7 +52,7 @@
 
 
 #undef UIP_CONF_BUFFER_SIZE
-#define UIP_CONF_BUFFER_SIZE    180
+#define UIP_CONF_BUFFER_SIZE    240
 
 
 /* Multiplies with chunk size, be aware of memory constraints. */

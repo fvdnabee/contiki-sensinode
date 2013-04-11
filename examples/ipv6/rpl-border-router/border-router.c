@@ -51,6 +51,8 @@
 #include <string.h>
 #include <ctype.h>
 
+#include "dev/cc2420.h"
+
 #define DEBUG DEBUG_NONE
 #include "net/uip-debug.h"
 
@@ -391,6 +393,7 @@ PROCESS_THREAD(border_router_process, ev, data)
   SENSORS_ACTIVATE(button_sensor);
 
   PRINTF("RPL-Border router started\n");
+cc2420_set_txpower(CC2420_TXPOWER_MAX);
 #if 0
    /* The border router runs with a 100% duty cycle in order to ensure high
      packet reception rates.

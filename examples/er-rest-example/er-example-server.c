@@ -49,6 +49,7 @@
 #include "dev/z1-phidgets.h"
 #include "lib/sensors.h"
 
+#include "dev/cc2420.h"
 
 /* Define which resources to include to meet memory constraints. */
 
@@ -72,7 +73,7 @@
 #define REST_RES_PH_SONAR         0
 #define REST_RES_PH_FLEXIFORCE    0
 #define REST_RES_PH_MOTION        0
-#define REST_RES_RFID		  0
+#define REST_RES_RFID		  1
 
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
@@ -118,7 +119,7 @@
 #warning "Erbium example without CoAP-specifc functionality"
 #endif /* CoAP-specific example */
 
-#define DEBUG 0
+#define DEBUG 1
 #if DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #define PRINT6ADDR(addr) PRINTF("[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]", ((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], ((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7], ((uint8_t *)addr)[8], ((uint8_t *)addr)[9], ((uint8_t *)addr)[10], ((uint8_t *)addr)[11], ((uint8_t *)addr)[12], ((uint8_t *)addr)[13], ((uint8_t *)addr)[14], ((uint8_t *)addr)[15])
@@ -1354,7 +1355,7 @@ PROCESS_THREAD(rest_server_example, ev, data)
       P4OUT &= ~0x04; //enable rfid reader
       uart0_set_input(uart_rx_callback); 
 #endif 
-
+  cc2420_set_txpower(CC2420_TXPOWER_MAX);
   /* Define application-specific events here. */
   while(1) {
     PROCESS_WAIT_EVENT();
