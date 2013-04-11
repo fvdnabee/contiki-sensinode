@@ -54,6 +54,13 @@
 #define DEBUG DEBUG_NONE
 #include "net/uip-debug.h"
 
+//#if !UIP_CONF_IPV6 || !UIP_CONF_ROUTER || !UIP_IPV6_MULTICAST || !UIP_CONF_IPV6_RPL
+//#error "This example can not work with the current contiki configuration"
+//#error "Check the values of: UIP_CONF_IPV6, UIP_CONF_ROUTER,"
+//#error "UIP_IPV6_CONF_MULTICAST, UIP_CONF_IPV6_RPL"
+//#endif
+
+
 uint16_t dag_id[] = {0x1111, 0x1100, 0, 0, 0, 0, 0, 0x0011};
 
 extern uip_ds6_nbr_t uip_ds6_nbr_cache[];
@@ -328,12 +335,48 @@ set_prefix_64(uip_ipaddr_t *prefix_64)
   uip_ds6_addr_add(&ipaddr, 0, ADDR_AUTOCONF);
 }
 /*---------------------------------------------------------------------------*/
+
+//JEN: code needed to join multicast group
+static uip_ds6_maddr_t *
+join_mcast_group()
+{
+  uip_ipaddr_t addr;
+  uip_ds6_maddr_t * rv;
+
+  /* First, set our v6 global */
+  uip_ip6addr(&addr, 0xaaaa, 0, 0, 0, 0, 0, 0, 0);
+  uip_ds6_set_addr_iid(&addr, &uip_lladdr);
+  uip_ds6_addr_add(&addr, 0, ADDR_AUTOCONF);
+
+  /*
+   * IPHC will use stateless multicast compression for this destination
+   * (M=1, DAC=0), with 32 inline bits (1E 89 AB CD)
+   */
+  uip_ip6addr(&addr,0xFF1E,0,0,0,0,0,0x89,0xABCD);
+  rv = uip_ds6_maddr_add(&addr);
+
+  if(rv) {
+    PRINTF("Joined multicast group ");
+    PRINT6ADDR(&uip_ds6_maddr_lookup(&addr)->ipaddr);
+    PRINTF("\n");
+  }
+  return rv;
+}
+//Jen
+
 PROCESS_THREAD(border_router_process, ev, data)
 {
   static struct etimer et;
   rpl_dag_t *dag;
 
   PROCESS_BEGIN();
+	
+  //joining multicast group
+  if(join_mcast_group() == NULL) {
+    PRINTF("Failed to join multicast group\n");
+    PROCESS_EXIT();
+  }
+
 
 /* While waiting for the prefix to be sent through the SLIP connection, the future
  * border router can join an existing DAG as a parent or child, or acquire a default 

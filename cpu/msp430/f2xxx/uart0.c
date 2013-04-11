@@ -114,12 +114,19 @@ uart0_init(unsigned long ubr)
   UCA0CTL1 |= UCSWRST;            /* Hold peripheral in reset state */
   UCA0CTL1 |= UCSSEL_2;           /* CLK = SMCLK */
 
-  UCA0BR0 = 0x45;                 /* 8MHz/115200 = 69 = 0x45 */
-  UCA0BR1 = 0x00;
+
+//  ubr = (MSP430_CPU_SPEED / ubr);
+  UCA0BR0 = ubr & 0xff;
+  UCA0BR1 = (ubr >> 8) & 0xff;
+
+
+//  UCA0BR0 = 0x45;                 /* 8MHz/115200 = 69 = 0x45 */
+//  UCA0BR1 = 0x00;
+
   UCA0MCTL = UCBRS_3;             /* Modulation UCBRSx = 3 */
 
   P3DIR &= ~0x20;                 /* P3.5 = USCI_A0 RXD as input */
-  P3DIR |= 0x10;                  /* P3.4 = USCI_A0 TXD as output */
+  //P3DIR |= 0x10;                  /* P3.4 = USCI_A0 TXD as output */
   P3SEL |= 0x30;                  /* P3.4,5 = USCI_A0 TXD/RXD */
   /*UCA0CTL1 &= ~UCSWRST;*/       /* Initialize USCI state machine */
 

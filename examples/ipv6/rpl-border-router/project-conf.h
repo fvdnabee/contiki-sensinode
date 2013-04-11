@@ -38,6 +38,15 @@
 #define UIP_FALLBACK_INTERFACE rpl_interface
 #endif
 
+/* Disabling RDC for demo purposes. Core updates often require more memory. */
+/* For projects, optimize memory and enable RDC again. */
+#undef NETSTACK_CONF_RDC
+#define NETSTACK_CONF_RDC     nullrdc_driver
+
+//enable multicast:
+#define UIP_MCAST6_CONF_ENGINE UIP_MCAST6_ENGINE_TRICKLE
+
+
 #ifndef QUEUEBUF_CONF_NUM
 #define QUEUEBUF_CONF_NUM          4
 #endif

@@ -7,6 +7,8 @@ WITH_UIP6=1
 UIP_CONF_IPV6=1
 CFLAGS+= -DUIP_CONF_IPV6_RPL
 
+UIP_CONF_IPV6_CHECKS = 0
+
 #linker optimizations
 SMALL=1
 
@@ -25,7 +27,7 @@ PROJECT_SOURCEFILES += slip-bridge.c
 #of the slip connection. Large MSS together with low baud rates without flow
 #control will overrun the transmit buffer when the style sheet is requested.
 
-WITH_WEBSERVER=1
+WITH_WEBSERVER=0
 ifeq ($(WITH_WEBSERVER),1)
 CFLAGS += -DWEBSERVER=1
 PROJECT_SOURCEFILES += httpd-simple.c
