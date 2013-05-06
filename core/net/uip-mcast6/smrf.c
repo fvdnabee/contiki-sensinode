@@ -117,7 +117,7 @@ smrf_in()
   }
 
   p = uip_ds6_nbr_lookup(&d->preferred_parent->addr);
-  if(!p) {
+/*  if(!p) {
     STATS_ADD(mcast_dropped);
     return UIP_MCAST6_DROP;
   }
@@ -126,13 +126,13 @@ smrf_in()
    * We accept a datagram if it arrived from our preferred parent, discard
    * otherwise.
    */
-  if(memcmp(p->lladdr.addr, packetbuf_addr(PACKETBUF_ADDR_SENDER),
+ /* if(memcmp(p->lladdr.addr, packetbuf_addr(PACKETBUF_ADDR_SENDER),
       UIP_LLADDR_LEN)){
     PRINTF("SMRF: Routable in but RPL ignored it\n");
     STATS_ADD(mcast_dropped);
     return UIP_MCAST6_DROP;
   }
-
+*/
   if(UIP_IP_BUF->ttl <= 1) {
     STATS_ADD(mcast_dropped);
     return UIP_MCAST6_DROP;

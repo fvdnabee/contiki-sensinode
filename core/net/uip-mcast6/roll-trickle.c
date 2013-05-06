@@ -879,7 +879,7 @@ roll_trickle_accept(uint8_t in)
 
 #if UIP_CONF_IPV6_CHECKS
   if(uip_is_addr_mcast_non_routable(&UIP_IP_BUF->destipaddr)){
-    PRINTF("Trickle: Mcast I/O, bad destinarion\n");
+    PRINTF("Trickle: Mcast I/O, bad destination\n");
     STATS_ADD(mcast_bad);
     return 0;
   }
@@ -895,39 +895,43 @@ roll_trickle_accept(uint8_t in)
 #endif
 
   /* Check the Next Header field: Must be HBHO */
-  if(UIP_IP_BUF->proto != UIP_PROTO_HBHO) {
+/*  if(UIP_IP_BUF->proto != UIP_PROTO_HBHO) {
     PRINTF("Trickle: Mcast I/O, bad proto\n");
     STATS_ADD(mcast_bad);
     return 0;
   } else {
+*/
     /* Check the Option Type */
-    if(UIP_EXT_OPT_FIRST->type != HBHO_OPT_TYPE_TRICKLE) {
+/*    if(UIP_EXT_OPT_FIRST->type != HBHO_OPT_TYPE_TRICKLE) {
       PRINTF("Trickle: Mcast I/O, bad HBHO type\n");
       STATS_ADD(mcast_bad);
       return 0;
     }
   }
+
   lochbhmptr = UIP_EXT_OPT_FIRST;
 
   PRINTF("Trickle: HBHO T=%u, L=%u, M=%u, S=0x%02x%02x\n",
       lochbhmptr->type, lochbhmptr->len, HBH_GET_M(lochbhmptr),
       HBH_GET_SV_MSB(lochbhmptr), lochbhmptr->seq_id_lsb);
-
+*/
   /* Drop unsupported Seed ID Lengths. S bit: 0->short, 1->long */
 #if ROLL_TRICKLE_SHORT_SEEDS
   /* Short Seed ID: Len MUST be 4 */
-  if(lochbhmptr->len != HBHO_LEN_SHORT_SEED) {
+/*  if(lochbhmptr->len != HBHO_LEN_SHORT_SEED) {
     PRINTF("Trickle: Mcast I/O, bad length\n");
     STATS_ADD(mcast_bad);
     return 0;
   }
+*/
 #else
   /* Long Seed ID: Len MUST be 2 (Seed ID is elided) */
-  if(lochbhmptr->len != HBHO_LEN_LONG_SEED) {
+  /*if(lochbhmptr->len != HBHO_LEN_LONG_SEED) {
     PRINTF("Trickle: Mcast I/O, bad length\n");
     STATS_ADD(mcast_bad);
     return 0;
   }
+*/
 #endif
 
 #if UIP_MCAST6_STATS
@@ -938,16 +942,16 @@ roll_trickle_accept(uint8_t in)
 
   /* Is this for a known window? */
 #if ROLL_TRICKLE_SHORT_SEEDS
-  seed_ptr = &lochbhmptr->seed_id;
+  //seed_ptr = &lochbhmptr->seed_id;
 #else
-  seed_ptr = &UIP_IP_BUF->srcipaddr;
+  //seed_ptr = &UIP_IP_BUF->srcipaddr;
 #endif
-  m = HBH_GET_M(lochbhmptr);
+  //m = HBH_GET_M(lochbhmptr);
 
-  locswptr = window_lookup(seed_ptr, m);
+  locswptr = 0;
 
-  seq_val = lochbhmptr->seq_id_lsb;
-  seq_val |= HBH_GET_SV_MSB(lochbhmptr) << 8;
+  //seq_val = lochbhmptr->seq_id_lsb;
+  //seq_val |= HBH_GET_SV_MSB(lochbhmptr) << 8;
 
   if(locswptr) {
     if(SEQ_VAL_IS_LT(seq_val, locswptr->lower_bound)) {

@@ -44,7 +44,7 @@
 #define NETSTACK_CONF_RDC     nullrdc_driver
 
 //enable multicast:
-#define UIP_MCAST6_CONF_ENGINE UIP_MCAST6_ENGINE_TRICKLE
+#define UIP_MCAST6_CONF_ENGINE UIP_MCAST6_ENGINE_SMRF
 
 
 #ifndef QUEUEBUF_CONF_NUM

@@ -36,7 +36,7 @@
 #undef IEEE802154_CONF_PANID
 
 /* enable multicast */
-#define UIP_MCAST6_CONF_ENGINE UIP_MCAST6_ENGINE_TRICKLE
+#define UIP_MCAST6_CONF_ENGINE UIP_MCAST6_ENGINE_SMRF
 
 /* Disabling RDC for demo purposes. Core updates often require more memory. */
 /* For projects, optimize memory and enable RDC again. */
@@ -62,9 +62,6 @@
 #undef COAP_MAX_OPEN_TRANSACTIONS
 #define COAP_MAX_OPEN_TRANSACTIONS   4
 
-/* Specifies if Conditional Observe is supported */
-#define CONDITION
-
 /* Must be <= open transaction number, default is COAP_MAX_OPEN_TRANSACTIONS-1. */
 /*
 #undef COAP_MAX_OBSERVERS
@@ -88,6 +85,6 @@
 #define QUEUEBUF_CONF_NUM       4
 
 #undef SICSLOWPAN_CONF_FRAG
-#define SICSLOWPAN_CONF_FRAG	1
+#define SICSLOWPAN_CONF_FRAG	0
 
 #endif /* __PROJECT_ERBIUM_CONF_H__ */
