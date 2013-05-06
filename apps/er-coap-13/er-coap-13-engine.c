@@ -113,7 +113,7 @@ coap_receive(void)
       /* Conditional observe */
       if(message->observe > 0) condition_packets++;
       if(message->type == COAP_TYPE_ACK) ack_packets++;
-      printf("Condition=%d \tPackets=%d Ack=%d\n", message->condition, condition_packets, ack_packets);
+      PRINTF("Condition=%d \tPackets=%d Ack=%d\n", message->condition, condition_packets, ack_packets);
 
       /* Handle requests. */
       if (message->code >= COAP_GET && message->code <= COAP_DELETE)

@@ -307,7 +307,7 @@ coap_decode_condition(coap_condition_t *cond, uint16_t encoded_cond)
   temp = temp << 2;
   cond->value = temp>>8;
 
-  printf("Encoded %u ++++ Cond Type: %u Reli: %u Val_T: %u, Val: %u\n", encoded_cond, cond->cond_type, cond->reliability_flag, cond->value_type, cond->value);
+  PRINTF("Encoded %u ++++ Cond Type: %u Reli: %u Val_T: %u, Val: %u\n", encoded_cond, cond->cond_type, cond->reliability_flag, cond->value_type, cond->value);
 
   return 1;
 }
@@ -328,7 +328,7 @@ satisfies_condition(coap_observer_t *obs, uint8_t cond_value)
     return 0;
   }
   else if (obs->condition.cond_type == CONDITION_ALLVALUES_GREATER) {
-  //printf("here: obs =%u val = %u\n", obs->condition.value, cond_value);
+  //PRINTF("here: obs =%u val = %u\n", obs->condition.value, cond_value);
     if (obs->condition.value < cond_value) return 1;
     return 0;
   }

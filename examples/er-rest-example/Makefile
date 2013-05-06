@@ -3,6 +3,8 @@ all: er-example-server er-example-client
 
 CONTIKI=../..
 CFLAGS += -DPROJECT_CONF_H=\"project-conf.h\"
+CFLAGS += -ffunction-sections
+LDFLAGS += -Wl,--gc-sections,--undefined=_reset_vector__,--undefined=InterruptVectors,--undefined=_copy_data_init__,--undefined=_clear_bss_init__,--undefined=_end_of_init__
 
 # for static routing, if enabled
 ifneq ($(TARGET), minimal-net)

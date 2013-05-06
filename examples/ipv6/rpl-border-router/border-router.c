@@ -53,7 +53,7 @@
 
 #include "dev/cc2420.h"
 
-#define DEBUG DEBUG_NONE
+#define DEBUG 1
 #include "net/uip-debug.h"
 
 //#if !UIP_CONF_IPV6 || !UIP_CONF_ROUTER || !UIP_IPV6_MULTICAST || !UIP_CONF_IPV6_RPL

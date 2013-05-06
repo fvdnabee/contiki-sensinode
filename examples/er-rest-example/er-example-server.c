@@ -55,10 +55,10 @@
 #define REST_RES_HELLO 0
 #define REST_RES_MIRROR 0 /* causes largest code size */
 #define REST_RES_CHUNKS 0
-#define REST_RES_SEPARATE 1
+#define REST_RES_SEPARATE 0
 #define REST_RES_PUSHING 0
-#define REST_RES_EVENT 1
-#define REST_RES_SUB 1
+#define REST_RES_EVENT 0
+#define REST_RES_SUB 0
 #define REST_RES_LEDS 0
 #define REST_RES_TOGGLE 1
 #define REST_RES_LIGHT 0
@@ -73,6 +73,7 @@
 #define REST_RES_PH_FLEXIFORCE    0
 #define REST_RES_PH_MOTION        0
 #define REST_RES_RFID		  1
+#define REST_RES_TEMP_CONDOBS	  0
 
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
@@ -82,8 +83,11 @@
 
 #include "erbium.h"
 
+#if REST_RES_TEMP_CONDOBS
 #include "sys/energest.h" // Conditional observe
-
+/* Use data from SHT11 sensor or use stored values for temperature resource */
+#define RES_TEMP_USE_SHT11_DATA 1
+#endif
 
 #if defined (PLATFORM_HAS_BUTTON)
 #include "dev/button-sensor.h"
@@ -120,7 +124,7 @@
 #warning "Erbium example without CoAP-specifc functionality"
 #endif /* CoAP-specific example */
 
-#define DEBUG 1
+#define DEBUG 0
 #if DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #define PRINT6ADDR(addr) PRINTF("[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]", ((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], ((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7], ((uint8_t *)addr)[8], ((uint8_t *)addr)[9], ((uint8_t *)addr)[10], ((uint8_t *)addr)[11], ((uint8_t *)addr)[12], ((uint8_t *)addr)[13], ((uint8_t *)addr)[14], ((uint8_t *)addr)[15])
@@ -511,7 +515,7 @@ EVENT_RESOURCE(rfid, METHOD_GET , "rfid_reader", "Usage=\"..\";obs");
 void rfid_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
 
-  const char *len = NULL;
+  leds_toggle(LEDS_BLUE);
   /* Some data that has the length up to REST_MAX_CHUNK_SIZE. For more, see the chunk resource. */
   int length = sizeof(rfidtag)-1; // -1 because we don't want to send the null character
   
@@ -531,7 +535,7 @@ rfid_event_handler(resource_t *r)
   coap_set_payload(notification, rfidtag, sizeof(rfidtag)-1);
 
   /* Notify the registered observers with the given message type, observe option, and payload. */
-  REST.notify_subscribers(r, event_counter, notification);
+  REST.notify_subscribers(r, event_counter, notification,event_counter);
 
 }
 #endif // REST_RES_RFID
@@ -941,18 +945,19 @@ pushing_periodic_handler(resource_t *r)
 
 /******************************************************************************/
 /* Conditional observe example resource */
-#if REST_RES_PUSHING
+#if REST_RES_TEMP_CONDOBS
 /*
  * Example for a periodic resource.
  * It takes an additional period parameter, which defines the interval to call [name]_periodic_handler().
  * A default post_handler takes care of subscriptions by managing a list of subscribers to notify.
  */
-PERIODIC_RESOURCE(temp, METHOD_GET, "sensors/temp", "title=\"Temperature\";obs", 5*CLOCK_SECOND);
+PERIODIC_RESOURCE(temp, METHOD_GET, "sensors/temp", "title=\"Temperature\";obs", 2*CLOCK_SECOND);
 
 /*const static uint8_t data[100] = {
 21, 23, 27, 27, 29, 21, 23, 27, 22, 25, 24, 26, 23, 25, 29, 29, 26, 27, 21, 26, 20, 22, 21, 28, 21, 24, 21, 21, 29, 22, 25, 28, 26, 22, 26, 25, 24, 29, 22, 27, 25, 27, 24, 28, 22, 23, 28, 29, 20, 21, 25, 20, 21, 26, 28, 23, 20, 20, 24, 20, 22, 24, 29, 28, 22, 25, 23, 27, 25, 26, 25, 20, 24, 29, 29, 27, 22, 27, 26, 23, 26, 21, 24, 28, 28, 23, 22, 20, 23, 26, 29, 25, 26, 28, 24, 29, 23, 22, 26, 23
 };
 */
+#if !(RES_TEMP_USE_SHT11_DATA)
 const static uint8_t data[2008] = {
 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 
 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 17, 18, 17, 17, 17, 17, 17, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 17, 18, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 
@@ -960,13 +965,14 @@ const static uint8_t data[2008] = {
 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 24, 24, 25, 24, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 
 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 22, 21, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 
 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20};
+#endif
 
 static unsigned max_age = COAP_DEFAULT_MAX_AGE;
 unsigned data_iterator = 0;
-#ifndef CONDITION
+//#ifndef CONDITION
 static uint16_t tmp_last = 0;
 static uint32_t time_last = 0;
-#endif
+//		#endif
 
 void
 temp_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
@@ -1016,8 +1022,8 @@ temp_periodic_handler(resource_t *r)
   tmp = data[data_iterator];
 
   data_iterator = (data_iterator + 1) ;
-  //printf("/%s: retreived temperature value from data array:%u\n", r->url, data[data_iterator-1]);
-  if(!stop) printf("==>from data array:val[%u] = %u\n", data_iterator-1, data[data_iterator-1]);
+  //PRINTF("/%s: retreived temperature value from data array:%u\n", r->url, data[data_iterator-1]);
+  if(!stop) PRINTF("==>from data array:val[%u] = %u\n", data_iterator-1, data[data_iterator-1]);
 
   if(!stop) {
     energest_flush();
@@ -1027,7 +1033,7 @@ temp_periodic_handler(resource_t *r)
     transmit = energest_type_time(ENERGEST_TYPE_TRANSMIT)/RTIMER_ARCH_SECOND;
     listen = energest_type_time(ENERGEST_TYPE_LISTEN)/RTIMER_ARCH_SECOND;
 
-    printf("cpu = %lu lpm = %lu tx = %lu rx = %lu\n", cpu, lpm, transmit, listen);
+    PRINTF("cpu = %lu lpm = %lu tx = %lu rx = %lu\n", cpu, lpm, transmit, listen);
   }
   if (data_iterator >= 2008) {
     if(!stop) {
@@ -1038,13 +1044,12 @@ temp_periodic_handler(resource_t *r)
       transmit = energest_type_time(ENERGEST_TYPE_TRANSMIT);
       listen = energest_type_time(ENERGEST_TYPE_LISTEN);
 
-      printf(">>>Final: cpu = %lu lpm = %lu tx = %lu rx = %lu\n", cpu, lpm, transmit, listen);
+      PRINTF(">>>Final: cpu = %lu lpm = %lu tx = %lu rx = %lu\n", cpu, lpm, transmit, listen);
       stop = 1;
-      printf("==>End<==\n");
-
+      PRINTF("==>End<==\n");
       coap_packet_t last_message[1]; /* This way the packet can be treated as pointer as usual. */
       coap_init_message(last_message, COAP_TYPE_NON, CONTENT_2_05, 0 );
-      coap_set_payload(last_message, content, snprintf(content, sizeof(content), "%u", 100));
+      coap_set_payload(last_message, content, snprintf(content, sizeof(content), "%u°C", 100));
 
       REST.notify_subscribers(r, obs_counter, last_message, tmp);
     } /* stop */
@@ -1052,14 +1057,14 @@ temp_periodic_handler(resource_t *r)
   }
 #endif
 
-#ifndef CONDITION /*For Normal Observe, check if value has changed before sending notification */
+//#ifndef CONDITION /*For Normal Observe, check if value has changed before sending notification */ //Does this work with normal observe? 
   if(tmp_last == tmp && ((clock_seconds() - time_last) < max_age)) {
     return;
   } else {
     tmp_last = tmp;
     time_last = clock_seconds();
   }
-#endif /*ifndec condition */
+//#endif /*ifndec condition */
   /* Build notification. */
   coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
   coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
@@ -1347,9 +1352,35 @@ radio_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred
 }
 #endif
 
+//code needed for multicast group subscription:
+static uip_ds6_maddr_t *
+join_mcast_group()
+{
+  uip_ipaddr_t addr;
+  uip_ds6_maddr_t * rv;
+
+  /* First, set our v6 global */
+  uip_ip6addr(&addr, 0xaaaa, 0, 0, 0, 0, 0, 0, 0);
+  uip_ds6_set_addr_iid(&addr, &uip_lladdr);
+  uip_ds6_addr_add(&addr, 0, ADDR_AUTOCONF);
+
+  /*
+   * IPHC will use stateless multicast compression for this destination
+   * (M=1, DAC=0), with 32 inline bits (1E 89 AB CD)
+   */
+  uip_ip6addr(&addr,0xFF1E,0,0,0,0,0,0x89,0xABCD);
+  rv = uip_ds6_maddr_add(&addr);
+
+  if(rv) {
+    PRINTF("Joined multicast group ");
+    PRINT6ADDR(&uip_ds6_maddr_lookup(&addr)->ipaddr);
+    PRINTF("\n");
+  }
+  return rv;
+}
+//JEN
 
 
-PROCESS(rest_server_example, "Erbium Example Server");
 AUTOSTART_PROCESSES(&rest_server_example);
 
 PROCESS_THREAD(rest_server_example, ev, data)
@@ -1408,6 +1439,9 @@ PROCESS_THREAD(rest_server_example, ev, data)
   event_rfid_read = process_alloc_event();
   rest_activate_event_resource(&resource_rfid);
 #endif
+#if REST_RES_TEMP_CONDOBS
+  rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
+#endif
 
 #if REST_RES_HELLO
   rest_activate_resource(&resource_helloworld);
@@ -1419,8 +1453,7 @@ PROCESS_THREAD(rest_server_example, ev, data)
   rest_activate_resource(&resource_chunks);
 #endif
 #if REST_RES_PUSHING
-  //rest_activate_periodic_resource(&periodic_resource_pushing);
-  rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
+  rest_activate_periodic_resource(&periodic_resource_pushing);
 #endif
 #if defined (PLATFORM_HAS_BUTTON) && REST_RES_EVENT
   rest_activate_event_resource(&resource_event);
