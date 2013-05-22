@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, Matthias Kovatsch and other contributors.
+ * Copyright (c) 2012, Matthias Kovatsch and other contributors.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,23 +42,38 @@
 #include "contiki.h"
 #include "contiki-net.h"
 
-/* Use data from SHT11 sensor or use stored values for temperature resource */
-//#define RES_TEMP_USE_SHT11_DATA 1
+#include "dev/leds.h"
+#include "dev/sht11.h"
+#include "dev/i2cmaster.h" 
+#include "dev/light-ziglet.h"
+#include "dev/z1-phidgets.h"
+#include "lib/sensors.h"
+
+#include "dev/cc2420.h"
 
 /* Define which resources to include to meet memory constraints. */
-#define REST_RES_HELLO 0
-#define REST_RES_MIRROR 0 /* causes largest code size */
-#define REST_RES_CHUNKS 1
-#define REST_RES_SEPARATE 1
-#define REST_RES_PUSHING 1
-#define REST_RES_EVENT 0
-#define REST_RES_SUB 0
-#define REST_RES_LEDS 0
-#define REST_RES_TOGGLE 0
-#define REST_RES_LIGHT 0
-#define REST_RES_BATTERY 0
-#define REST_RES_RADIO 0
+#define REST_RES_HELLO            0
+#define REST_RES_MIRROR           0 /* causes largest code size */
+#define REST_RES_CHUNKS           0
+#define REST_RES_SEPARATE         0
+#define REST_RES_PUSHING          1
+#define REST_RES_EVENT            0
+#define REST_RES_SUB              0
+#define REST_RES_LEDS             0
+#define REST_RES_TOGGLE           1
+#define REST_RES_LIGHT            0
+#define REST_RES_BATTERY          0
+#define REST_RES_RADIO            0
 
+#define REST_RES_SERVERINFO       1
+#define REST_RES_ZIG001           0
+#define REST_RES_ZIG002           0
+#define REST_RES_PH_TOUCH         0
+#define REST_RES_PH_SONAR         0
+#define REST_RES_PH_FLEXIFORCE    0
+#define REST_RES_PH_MOTION        0
+#define REST_RES_RFID			        0
+#define REST_RES_TEMP_CONDOBS	    1
 
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
@@ -68,7 +83,11 @@
 
 #include "erbium.h"
 
-#include "sys/energest.h"
+#if REST_RES_TEMP_CONDOBS
+#include "sys/energest.h" // Conditional observe
+/* Use data from SHT11 sensor or use stored values for temperature resource */
+#define RES_TEMP_USE_SHT11_DATA 0
+#endif
 
 #if defined (PLATFORM_HAS_BUTTON)
 #include "dev/button-sensor.h"
@@ -88,6 +107,9 @@
 #if defined (PLATFORM_HAS_RADIO)
 #include "dev/radio-sensor.h"
 #endif
+#if REST_REST_RFID
+#include "dev/uart0.h"
+#endif
 
 
 /* For CoAP-specific example: not required for normal RESTful Web service. */
@@ -95,13 +117,15 @@
 #include "er-coap-03.h"
 #elif WITH_COAP == 7
 #include "er-coap-07.h"
+#elif WITH_COAP == 12
+#include "er-coap-12.h"
 #elif WITH_COAP == 13
 #include "er-coap-13.h"
 #else
 #warning "Erbium example without CoAP-specifc functionality"
 #endif /* CoAP-specific example */
 
-#define DEBUG 0
+#define DEBUG 1
 #if DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #define PRINT6ADDR(addr) PRINTF("[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]", ((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], ((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7], ((uint8_t *)addr)[8], ((uint8_t *)addr)[9], ((uint8_t *)addr)[10], ((uint8_t *)addr)[11], ((uint8_t *)addr)[12], ((uint8_t *)addr)[13], ((uint8_t *)addr)[14], ((uint8_t *)addr)[15])
@@ -111,6 +135,408 @@
 #define PRINT6ADDR(addr)
 #define PRINTLLADDR(addr)
 #endif
+
+PROCESS(rest_server_example, "Erbium Example Server");
+
+#if REST_RES_SERVERINFO
+/*
+ * Resources are defined by the RESOURCE macro.
+ * Signature: resource name, the RESTful methods it handles, and its URI path (omitting the leading slash).
+ */
+
+RESOURCE(serverinfo, METHOD_GET, ".well-known/serverInfo","title=\"serverInfo\"");
+/*
+ * A handler function named [resource name]_handler must be implemented for each RESOURCE.
+ * A buffer for the response payload is provided through the buffer pointer. Simple resources can ignore
+ * preferred_size and offset, but must respect the REST_MAX_CHUNK_SIZE limit for the buffer.
+ * If a smaller block size is requested for CoAP, the REST framework automatically splits the data.
+ */
+void
+serverinfo_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  const char *len = NULL;
+  uip_ds6_addr_t * addr;
+  addr = uip_ds6_get_global(-1); //of uip_ds6_get_global ?
+  uint16_t nextPos = 0;
+  uint16_t i;
+  unsigned char serverInfo[63];
+  unsigned char *serverInfoPart1="AL|16|A|";
+  unsigned char *serverInfoPart2="|NT|S|N|sensor";
+  unsigned char charretje[6];
+
+
+  for ( i = 0; i < 8; i++)
+  {
+		serverInfo[nextPos++] = serverInfoPart1[i];
+  }
+  i=0;
+  for ( i = 0 ; i < 16 ; i++ )
+  {
+    itoa(addr->ipaddr.u8[i],charretje,16);
+
+  if(strlen(charretje)==0){ //
+    serverInfo[nextPos++] = '0';
+    serverInfo[nextPos++] = '0';
+  }else if(strlen(charretje)==1){
+    serverInfo[nextPos++] = '0';
+    serverInfo[nextPos++] = charretje[0];
+  }else{
+		serverInfo[nextPos++] = charretje[0];
+		serverInfo[nextPos++] = charretje[1];		
+	} 
+    if((i+1)%2 == 0 && i<15){
+      serverInfo[nextPos++] = ':';
+    }
+
+
+  }
+
+  for ( i = 0; i < 14; i++)
+  {
+	serverInfo[nextPos++] = serverInfoPart2[i];
+  }
+  
+	itoa(addr->ipaddr.u8[15],charretje,16);
+  if(strlen(charretje)==0){ //
+    serverInfo[nextPos++] = '0';
+    serverInfo[nextPos++] = '0';
+  }else if(strlen(charretje)==1){
+    serverInfo[nextPos++] = '0';
+    serverInfo[nextPos++] = charretje[0];
+  }else{
+		serverInfo[nextPos++] = charretje[0];
+		serverInfo[nextPos++] = charretje[1];		
+	}
+
+  
+  serverInfo[nextPos] = '\0';
+
+  /* Some data that has the length up to REST_MAX_CHUNK_SIZE. For more, see the chunk resource. */
+  //serverInfo format: AL|AddressLength|A|Address|NT|NameType|N|Name
+  //char const * const message = "AL|25|A|aaaa::0212:7402:0002:0202|NT|S|N|2";
+  char const * const message = serverInfo;
+  int length = nextPos; /*           |<-------->| */
+
+  /* The query string can be retrieved by rest_get_query() or parsed for its key-value pairs. */
+  if (REST.get_query_variable(request, "len", &len)) {
+    length = atoi(len);
+    if (length<0) length = 0;
+    if (length>REST_MAX_CHUNK_SIZE) length = REST_MAX_CHUNK_SIZE;
+    memcpy(buffer, message, length);
+  } else {
+    memcpy(buffer, message, length);
+  }
+
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN); /* text/plain is the default, hence this option could be omitted. */
+  REST.set_header_etag(response, (uint8_t *) &length, 1);
+  REST.set_response_payload(response, buffer, length);
+
+}
+#endif 
+
+#if REST_RES_ZIG001
+RESOURCE(zig001, METHOD_GET , "digital/zig001_sht11", "Usage=\"..\"");
+void zig001_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  const unsigned ERROR_VALUE = 65535; // = 0xFFFF, waarde als er iets misloopt
+  static unsigned tmp, rh;
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+
+  sht11_init();
+
+  tmp = sht11_temp();
+  rh = sht11_humidity();
+
+  if(tmp == ERROR_VALUE || rh == ERROR_VALUE) {
+    length = sprintf(message, "Controleer of de sensor (correct) is aangesloten!");
+  } else {
+    length = sprintf(message, "Temperatuur: %u°C\nRel. Luchtvochtigheid: %u%%",
+                       (unsigned) (-39.60 + 0.01 * tmp), (unsigned) (-4 + 0.0405*rh - 2.8e-6*(rh*rh)));
+  }
+
+  if(length>=0) {
+    memcpy(buffer, message, length);
+  }
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
+  REST.set_header_etag(response, (uint8_t *)&length, 1);
+  REST.set_response_payload(response, buffer, length);
+}
+#endif // REST_RES_LEDS_ZIG001
+
+#if REST_RES_ZIG002
+RESOURCE(zig002, METHOD_GET , "digital/zig002_light", "Usage=\"..\"");
+void zig002_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+
+  light_ziglet_init();
+  length = sprintf(message, "Lichtsterkte: %u lux\n", light_ziglet_read());
+
+  if(length>=0) {
+    memcpy(buffer, message, length);
+  }
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
+  REST.set_header_etag(response, (uint8_t *)&length, 1);
+  REST.set_response_payload(response, buffer, length);
+}
+#endif // REST_RES_ZIG002
+
+#if REST_RES_PH_TOUCH
+RESOURCE(ph_touch, METHOD_GET , "phidget/touch_sensor", "Usage=\"..\"");
+void ph_touch_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  const int MAX_UNTOUCHED_VALUE = 50;
+  const int MIN_TOUCHED_VALUE = 4000;
+
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+
+  SENSORS_ACTIVATE(phidgets);
+  int phidget5V = phidgets.value(PHIDGET5V_1);
+  int phidget3V = phidgets.value(PHIDGET3V_2);
+
+  if( phidget5V < MAX_UNTOUCHED_VALUE || phidget3V < MAX_UNTOUCHED_VALUE ) {
+    length = sprintf(message, "Sensor aangesloten, niet aangeraakt");
+  } else if( phidget5V > MIN_TOUCHED_VALUE || phidget3V > MIN_TOUCHED_VALUE ) {
+    length = sprintf(message, "Sensor aangesloten, wel aangeraakt");
+  } else {
+    length = sprintf(message, "Geen sensor aangesloten");
+  }
+
+  if(length>=0) {
+    memcpy(buffer, message, length);
+  }
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
+  REST.set_header_etag(response, (uint8_t *)&length, 1);
+  REST.set_response_payload(response, buffer, length);
+}
+#endif // REST_RES_PH_TOUCH
+
+#if REST_RES_PH_SONAR
+// conversiefuncties
+#define round(x)                  ((x)>=0?(int)((x)+0.5):(int)((x)-0.5))
+#define convert_to_cm(x)          round(phidgets.value(PHIDGET3V_2) / (4095 / 1296))
+
+RESOURCE(ph_sonar, METHOD_GET , "phidget/sonar_sensor", "Usage=\"..?ph=3|5\"");
+void ph_sonar_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  const char *ph = NULL;
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+  int success = 1;
+  int distance;
+
+  if(REST.get_query_variable(request, "ph", &ph)) {
+    int type = atoi(ph);
+    if(type == 3 || type == 5) {
+      SENSORS_ACTIVATE(phidgets);
+
+      int value;
+      if(type == 3) {
+        value = phidgets.value(PHIDGET3V_2);
+      } else {
+        value = phidgets.value(PHIDGET5V_1);
+      }
+      distance = (int)(value / (4095 / 1296));
+    } else {
+      success = 0;
+    }
+  } else {
+    success = 0;
+  }
+
+  if(success) {
+    length = sprintf(message, "Voorwerp bevindt zich op (ongeveer) %d cm", distance);
+
+    if(length>=0) {
+      memcpy(buffer, message, length);
+    }
+    REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
+    REST.set_header_etag(response, (uint8_t *)&length, 1);
+    REST.set_response_payload(response, buffer, length);
+  } else {
+    REST.set_response_status(response, REST.status.BAD_REQUEST);
+  }
+}
+#endif // REST_RES_PH_SONAR
+
+#if REST_RES_PH_FLEXIFORCE
+// conversiefuncties
+#define round(x)                  ((x)>=0?(int)((x)+0.5):(int)((x)-0.5))
+#define convert_to_cm(x)          round(phidgets.value(PHIDGET3V_2) / (4095 / 1296))
+
+RESOURCE(ph_flexiforce, METHOD_GET , "phidget/flexiforce_sensor", "Usage=\"..?ph=3|5\"");
+void ph_flexiforce_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  const int MIN_VALUE = 10;
+
+  const char *ph = NULL;
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+
+  SENSORS_ACTIVATE(phidgets);
+
+  int phidget5V = phidgets.value(PHIDGET5V_1);
+  int phidget3V = phidgets.value(PHIDGET3V_2);
+
+  int value;
+
+  REST.get_query_variable(request, "ph", &ph);
+  int type = atoi(ph);
+  if(type == 3) {
+      value = phidgets.value(PHIDGET3V_2);
+    } else if(type == 5) {
+      value = phidgets.value(PHIDGET5V_1);
+    } else {
+    // kleinste van de 2 zoeken
+    value = (phidget5V < phidget3V ? phidget5V : phidget3V);
+  }
+
+  if (value < MIN_VALUE) {
+    length = sprintf(message, "Sensor niet ingedrukt");
+  } else {
+    length = sprintf(message, "Sensor ingedrukt (als aangesloten): %d", phidget5V);
+  }
+
+  if(length>=0) {
+    memcpy(buffer, message, length);
+  }
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
+  REST.set_header_etag(response, (uint8_t *)&length, 1);
+  REST.set_response_payload(response, buffer, length);
+}
+#endif // REST_RES_PH_FLEXIFORCE
+
+#if REST_RES_PH_MOTION
+// CODE NOG NIET IN ORDE !!!
+#define TIMER_INTERVAL            CLOCK_SECOND / 10
+
+RESOURCE(ph_motion, METHOD_GET , "phidget/motion_sensor", "Usage=\"..\"");
+void ph_motion_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  // Calibratie voor mote '055' op netstroom
+  const int PH_5V_NO_MOTION_MIN_VALUE = 2010;
+  const int PH_5V_NO_MOTION_MAX_VALUE = 2120;
+  const int PH_3V_NO_MOTION_MIN_VALUE = 3330;
+  const int PH_3V_NO_MOTION_MAX_VALUE = 3530;
+
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+
+  static struct etimer et;
+  static int loops = 20; // 2 seconden testen
+  static int consecutive_motions = 0;
+  const int MAX_MOTIONS = 13; // maximaal aantal opeenvolgende bewegingsdetecties
+
+  SENSORS_ACTIVATE(phidgets);
+
+  while (loops > 0 && consecutive_motions < MAX_MOTIONS) {
+    int i=0;
+    while(i<100) {
+      i++;
+    }
+
+    int phidget5V = phidgets.value(PHIDGET5V_1);
+    int phidget3V = phidgets.value(PHIDGET3V_2);
+
+    if( (phidget5V > PH_5V_NO_MOTION_MIN_VALUE && phidget5V < PH_5V_NO_MOTION_MAX_VALUE) ||
+        (phidget3V > PH_3V_NO_MOTION_MIN_VALUE && phidget3V < PH_3V_NO_MOTION_MAX_VALUE)  ) {
+      consecutive_motions = 0; // resetten
+    } else {
+      consecutive_motions++;
+    }
+    loops--;
+  }
+
+  if(consecutive_motions < MAX_MOTIONS) {
+    length = sprintf(message, "Geen beweging waargenomen");
+  } else {
+    length = sprintf(message, "Beweging waargenomen");
+  }
+
+  if(length>=0) {
+    memcpy(buffer, message, length);
+  }
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
+  REST.set_header_etag(response, (uint8_t *)&length, 1);
+  REST.set_response_payload(response, buffer, length);
+}
+#endif // REST_RES_PH_MOTION
+
+#if REST_RES_RFID
+static process_event_t event_rfid_read; //event that is called when a new rfid tag is read.
+
+unsigned long BAUDRATE = 2400; //parallax RFID reader uses a baud rate of 2400, default baudrate is 115200. This has a huge impact on usb communication.
+static char startbyte = 0x0A;
+static char stopbyte = 0x0D;
+char rfidtag[11]="0000000000\0";
+char previous_rfidtag[11]="0000000000\0";
+uint8_t reading=0;
+//uint8_t rfidtag_changed=0;
+//static clock_time_t read_time; //the time a tag is read
+
+int uart_rx_callback(unsigned char c) //is called when RFID tag detects card
+{
+
+//leds_toggle(LEDS_ALL);
+ size_t len;
+// uart0_writeb(c);
+
+ if (reading == 0 && c == startbyte){ //start of rfid tag detected
+    reading = 1;
+    memset(rfidtag, 0, sizeof(rfidtag)); //clear old rfid
+ }else if (reading == 1){
+    if(c == stopbyte){ //end of rfid tag reached
+      reading = 0;
+      //read_time = clock_time();
+//      PRINTF("Rfid tag: <%s>\n",rfidtag);
+
+      if(strcmp(previous_rfidtag,rfidtag)){ //previous read tag is different from current tag
+       // rfidtag_changed=1;
+	process_post(&rest_server_example, event_rfid_read, &rfidtag);
+     
+	memcpy(previous_rfidtag,rfidtag,sizeof(rfidtag));
+      }
+
+    }else{ //read next rfid tag byte
+      len = strlen(rfidtag);
+      rfidtag[len++] = c;
+      rfidtag[len] = '\0';
+    }
+ }
+ return 0;
+}
+
+EVENT_RESOURCE(rfid, METHOD_GET , "rfid_reader", "Usage=\"..\";obs");
+void rfid_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+
+  leds_toggle(LEDS_BLUE);
+  /* Some data that has the length up to REST_MAX_CHUNK_SIZE. For more, see the chunk resource. */
+  int length = sizeof(rfidtag)-1; // -1 because we don't want to send the null character
+  
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN); /* text/plain is the default, hence this option could be omitted. */
+  REST.set_header_etag(response, (uint8_t *) &length, 1);
+  REST.set_response_payload(response, rfidtag, length);
+}
+void
+rfid_event_handler(resource_t *r)
+{
+  static uint16_t event_counter = 0;
+
+  ++event_counter;
+  /* Build notification. */
+  coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
+  coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
+  coap_set_payload(notification, rfidtag, sizeof(rfidtag)-1);
+
+  /* Notify the registered observers with the given message type, observe option, and payload. */
+  REST.notify_subscribers(r, event_counter, notification,event_counter);
+
+}
+#endif // REST_RES_RFID
 
 /******************************************************************************/
 #if REST_RES_HELLO
@@ -168,7 +594,7 @@ mirror_handler(void* request, void* response, uint8_t *buffer, uint16_t preferre
   unsigned int content_type = REST.get_header_content_type(request);
 
   /* The other getters copy the value (or string/array pointer) to the given pointers and return 1 for success or the length of strings/arrays. */
-  uint32_t max_age = 0;
+  uint32_t max_age_and_size = 0;
   const char *str = NULL;
   uint32_t observe = 0;
   const uint8_t *bytes = NULL;
@@ -183,14 +609,22 @@ mirror_handler(void* request, void* response, uint8_t *buffer, uint16_t preferre
   int strpos = 0;
   /* snprintf() counts the terminating '\0' to the size parameter.
    * The additional byte is taken care of by allocating REST_MAX_CHUNK_SIZE+1 bytes in the REST framework.
-   * Add +1 to fill the complete buffer. */
-  strpos += snprintf((char *)buffer, REST_MAX_CHUNK_SIZE+1, "CT %u\n", content_type);
-
+   * Add +1 to fill the complete buffer, as the payload does not need a terminating '\0'. */
+  if (content_type!=-1)
+  {
+    strpos += snprintf((char *)buffer, REST_MAX_CHUNK_SIZE+1, "CT %u\n", content_type);
+  }
+  
   /* Some getters such as for ETag or Location are omitted, as these options should not appear in a request.
    * Max-Age might appear in HTTP requests or used for special purposes in CoAP. */
-  if (strpos<=REST_MAX_CHUNK_SIZE && REST.get_header_max_age(request, &max_age))
+  if (strpos<=REST_MAX_CHUNK_SIZE && REST.get_header_max_age(request, &max_age_and_size))
   {
-    strpos += snprintf((char *)buffer+strpos, REST_MAX_CHUNK_SIZE-strpos+1, "MA %lu\n", max_age);
+    strpos += snprintf((char *)buffer+strpos, REST_MAX_CHUNK_SIZE-strpos+1, "MA %lu\n", max_age_and_size);
+  }
+  /* For HTTP this is the Length option, for CoAP it is the Size option. */
+  if (strpos<=REST_MAX_CHUNK_SIZE && REST.get_header_length(request, &max_age_and_size))
+  {
+    strpos += snprintf((char *)buffer+strpos, REST_MAX_CHUNK_SIZE-strpos+1, "SZ %lu\n", max_age_and_size);
   }
 
   if (strpos<=REST_MAX_CHUNK_SIZE && (len = REST.get_header_host(request, &str)))
@@ -280,9 +714,10 @@ mirror_handler(void* request, void* response, uint8_t *buffer, uint16_t preferre
 
   /* Set dummy header options for response. Like getters, some setters are not implemented for HTTP and have no effect. */
   REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
-  REST.set_header_max_age(response, 10); /* For HTTP, browsers will not re-request the page for 10 seconds. CoAP action depends on the client. */
+  REST.set_header_max_age(response, 17); /* For HTTP, browsers will not re-request the page for 17 seconds. */
   REST.set_header_etag(response, opaque, 2);
   REST.set_header_location(response, location); /* Initial slash is omitted by framework */
+  REST.set_header_length(response, strpos); /* For HTTP, browsers will not re-request the page for 10 seconds. CoAP action depends on the client. */
 
 /* CoAP-specific example: actions not required for normal RESTful Web service. */
 #if WITH_COAP > 1
@@ -364,8 +799,16 @@ chunks_handler(void* request, void* response, uint8_t *buffer, uint16_t preferre
 /******************************************************************************/
 #if REST_RES_SEPARATE && defined (PLATFORM_HAS_BUTTON) && WITH_COAP > 3
 /* Required to manually (=not by the engine) handle the response transaction. */
+#if WITH_COAP == 7
+#include "er-coap-07-separate.h"
+#include "er-coap-07-transactions.h"
+#elif WITH_COAP == 12
+#include "er-coap-12-separate.h"
+#include "er-coap-12-transactions.h"
+#elif WITH_COAP == 13
 #include "er-coap-13-separate.h"
 #include "er-coap-13-transactions.h"
+#endif
 /*
  * CoAP-specific example for separate responses.
  * Note the call "rest_set_pre_handler(&resource_separate, coap_separate_handler);" in the main process.
@@ -459,7 +902,7 @@ separate_finalize_handler()
  * It takes an additional period parameter, which defines the interval to call [name]_periodic_handler().
  * A default post_handler takes care of subscriptions by managing a list of subscribers to notify.
  */
-PERIODIC_RESOURCE(pushing, METHOD_GET, "test/push", "title=\"Periodic demo\";obs", 90*CLOCK_SECOND);
+PERIODIC_RESOURCE(pushing, METHOD_GET, "test/push", "title=\"Periodic demo\";obs", 5*CLOCK_SECOND);
 
 void
 pushing_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
@@ -498,7 +941,8 @@ pushing_periodic_handler(resource_t *r)
 #endif
 
 /******************************************************************************/
-#if REST_RES_PUSHING
+/* Conditional observe example resource */
+#if REST_RES_TEMP_CONDOBS
 /*
  * Example for a periodic resource.
  * It takes an additional period parameter, which defines the interval to call [name]_periodic_handler().
@@ -506,13 +950,20 @@ pushing_periodic_handler(resource_t *r)
  */
 PERIODIC_RESOURCE(temp, METHOD_GET, "sensors/temp", "title=\"Temperature\";obs", 10*CLOCK_SECOND);
 
-/*const static uint8_t data[100] = {
+#if !(RES_TEMP_USE_SHT11_DATA)
+const static uint8_t data[100] = {
 21, 23, 27, 27, 29, 21, 23, 27, 22, 25, 24, 26, 23, 25, 29, 29, 26, 27, 21, 26, 20, 22, 21, 28, 21, 24, 21, 21, 29, 22, 25, 28, 26, 22, 26, 25, 24, 29, 22, 27, 25, 27, 24, 28, 22, 23, 28, 29, 20, 21, 25, 20, 21, 26, 28, 23, 20, 20, 24, 20, 22, 24, 29, 28, 22, 25, 23, 27, 25, 26, 25, 20, 24, 29, 29, 27, 22, 27, 26, 23, 26, 21, 24, 28, 28, 23, 22, 20, 23, 26, 29, 25, 26, 28, 24, 29, 23, 22, 26, 23
 };
+/*
+const static uint8_t data[2008] = {
+19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 
+18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 17, 18, 17, 17, 17, 17, 17, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 17, 18, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 
+17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 18, 19, 20, 20, 20, 20, 20, 20, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 26, 26, 26, 26, 26, 25, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 25, 26, 26, 26, 26, 26, 26, 26, 26, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 
+24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 24, 24, 25, 24, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 
+24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 22, 21, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 
+21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20};
 */
-const static uint8_t data[288] = {
-19, 19, 19, 19, 19, 19, 19, 19, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 19, 20, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 23, 23, 23, 23, 23, 23, 23, 24, 24, 24, 24, 23, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 23, 23, 24, 24, 24, 24, 24, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 22, 22, 22, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20
-};
+#endif
 
 static unsigned max_age = COAP_DEFAULT_MAX_AGE;
 unsigned data_iterator = 0;
@@ -520,7 +971,6 @@ unsigned data_iterator = 0;
 static uint32_t tmp_last = 0;
 static uint32_t time_last = 0;
 
-  
 void
 temp_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
@@ -528,22 +978,21 @@ temp_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_
 
   static uint32_t tmp; // state of temperature resource at the moment
   static char msg[11];
-  
-  #if RES_TEMP_USE_SHT11_DATA // use sht11 sensor for temperature resource
-  	i2c_disable(); //http://comments.gmane.org/gmane.os.contiki.devel/14819
-	  sht11_init();
-	  tmp = (unsigned) (-39.60 + 0.01 * sht11_temp());
-  #else // use stored values for temperature resource
- 	 tmp = data[data_iterator++ % 288];
-  #endif  
 
-    tmp_last = tmp;
-    time_last = clock_seconds();
-    coap_set_header_max_age(response, max_age);            
+#if RES_TEMP_USE_SHT11_DATA // use sht11 sensor for temperature resource
+	i2c_disable(); //http://comments.gmane.org/gmane.os.contiki.devel/14819
+  sht11_init();
+  tmp = (unsigned) (-39.60 + 0.01 * sht11_temp());
+#else // use stored values for temperature resource
+  tmp = data[data_iterator++ % 2008];
+#endif
+
+  tmp_last = tmp;
+  time_last = clock_seconds();
+  coap_set_header_max_age(response, max_age);
 
   snprintf(msg, sizeof(msg), "%u", tmp);
   REST.set_response_payload(response, msg, strlen(msg));
-
 
   /* A post_handler that handles subscriptions will be called for periodic resources by the REST framework. */
 }
@@ -555,54 +1004,47 @@ temp_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_
 void
 temp_periodic_handler(resource_t *r)
 {
-  static char content[5]; 
+  static char content[5];
   static uint16_t obs_counter = 0;
   static uint32_t tmp; // state of temperature resource at the moment
-  unsigned long cpu, lpm, transmit, listen; 
-  
-	#if RES_TEMP_USE_SHT11_DATA // use sht11 sensor for temperature resource
- 		i2c_disable(); //http://comments.gmane.org/gmane.os.contiki.devel/14819
- 		sht11_init();
-		tmp = (unsigned) (-39.60 + 0.01 * sht11_temp());
-		PRINTF("/%s: retreived temperature value from sensor\n", r->url);
-	#else // use stored values for temperature resource
-		tmp = data[data_iterator++ % 288];	
-		printf("==>from data array:val[%u] = %u\n", data_iterator-1, data[data_iterator-1]);
-	#endif		
+  unsigned long cpu, lpm, transmit, listen;
 
-		energest_flush();
+#if RES_TEMP_USE_SHT11_DATA // use sht11 sensor for temperature resource
+	i2c_disable(); //http://comments.gmane.org/gmane.os.contiki.devel/14819
+ 	sht11_init();
+	tmp = (unsigned) (-39.60 + 0.01 * sht11_temp());
+	PRINTF("/%s: retreived temperature value from sensor\n", r->url);
+#else // use stored values for temperature resource
+	tmp = data[data_iterator++ % 2008];	
+	printf("==>from data array:val[%u] = %u\n", data_iterator-1, data[data_iterator-1]);
+#endif
 
-    cpu = energest_type_time(ENERGEST_TYPE_CPU);
+	energest_flush();
+  cpu = energest_type_time(ENERGEST_TYPE_CPU);
+  lpm = energest_type_time(ENERGEST_TYPE_LPM);
+  transmit = energest_type_time(ENERGEST_TYPE_TRANSMIT);
+  listen = energest_type_time(ENERGEST_TYPE_LISTEN);
 
-    lpm = energest_type_time(ENERGEST_TYPE_LPM);
-
-    transmit = energest_type_time(ENERGEST_TYPE_TRANSMIT);
-
-    listen = energest_type_time(ENERGEST_TYPE_LISTEN);
-		 
 //    printf(">>>Final: cpu = %lu lpm = %lu tx = %lu rx = %lu\n", cpu, lpm, transmit, listen);
-           		      
+
 		if(tmp_last == tmp) {//&& ((clock_seconds() - time_last) < max_age)) {
       return;
   	} else {
       tmp_last = tmp;
       time_last = clock_seconds();
   }
-  
+
  /* Build notification. */
   coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
-
   coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
-
   coap_set_header_max_age(notification, max_age);
-
   coap_set_payload(notification, content, snprintf(content, sizeof(content), "%u", tmp));
-    
+
   ++obs_counter;
   /* Notify the registered observers with the given message type, observe option, and payload. */
   REST.notify_subscribers(r, obs_counter, notification, tmp);
 }
-#endif /*if rest pushing*/
+#endif /*if rest temp CONDOBS*/
 
 /******************************************************************************/
 #if REST_RES_EVENT && defined (PLATFORM_HAS_BUTTON)
@@ -669,7 +1111,7 @@ sub_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_s
   }
   else
   {
-    snprintf((char *)buffer, REST_MAX_CHUNK_SIZE, ".%s", uri_path+base_len);
+    snprintf((char *)buffer, REST_MAX_CHUNK_SIZE, ".%.*s", len-base_len, uri_path+base_len);
   }
 
   REST.set_response_payload(response, buffer, strlen((char *)buffer));
@@ -776,7 +1218,7 @@ light_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred
   }
   else
   {
-    REST.set_response_status(response, REST.status.UNSUPPORTED_MADIA_TYPE);
+    REST.set_response_status(response, REST.status.NOT_ACCEPTABLE);
     const char *msg = "Supporting content-types text/plain, application/xml, and application/json";
     REST.set_response_payload(response, msg, strlen(msg));
   }
@@ -811,7 +1253,7 @@ battery_handler(void* request, void* response, uint8_t *buffer, uint16_t preferr
   }
   else
   {
-    REST.set_response_status(response, REST.status.UNSUPPORTED_MADIA_TYPE);
+    REST.set_response_status(response, REST.status.NOT_ACCEPTABLE);
     const char *msg = "Supporting content-types text/plain and application/json";
     REST.set_response_payload(response, msg, strlen(msg));
   }
@@ -869,7 +1311,7 @@ radio_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred
     }
     else
     {
-      REST.set_response_status(response, REST.status.UNSUPPORTED_MADIA_TYPE);
+      REST.set_response_status(response, REST.status.NOT_ACCEPTABLE);
       const char *msg = "Supporting content-types text/plain and application/json";
       REST.set_response_payload(response, msg, strlen(msg));
     }
@@ -879,10 +1321,35 @@ radio_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred
 }
 #endif
 
+//code needed for multicast group subscription:
+static uip_ds6_maddr_t *
+join_mcast_group()
+{
+  uip_ipaddr_t addr;
+  uip_ds6_maddr_t * rv;
 
-static struct etimer et;
+  /* First, set our v6 global */
+  uip_ip6addr(&addr, 0xaaaa, 0, 0, 0, 0, 0, 0, 0);
+  uip_ds6_set_addr_iid(&addr, &uip_lladdr);
+  uip_ds6_addr_add(&addr, 0, ADDR_AUTOCONF);
 
-PROCESS(rest_server_example, "Erbium Example Server");
+  /*
+   * IPHC will use stateless multicast compression for this destination
+   * (M=1, DAC=0), with 32 inline bits (1E 89 AB CD)
+   */
+  uip_ip6addr(&addr,0xFF1E,0,0,0,0,0,0x89,0xABCD);
+  rv = uip_ds6_maddr_add(&addr);
+
+  if(rv) {
+    PRINTF("Joined multicast group ");
+    PRINT6ADDR(&uip_ds6_maddr_lookup(&addr)->ipaddr);
+    PRINTF("\n");
+  }
+  return rv;
+}
+//JEN
+
+
 AUTOSTART_PROCESSES(&rest_server_example);
 
 PROCESS_THREAD(rest_server_example, ev, data)
@@ -890,6 +1357,12 @@ PROCESS_THREAD(rest_server_example, ev, data)
   PROCESS_BEGIN();
 
   PRINTF("Starting Erbium Example Server\n");
+
+  //joining multicast server
+  if(join_mcast_group() == NULL) {
+    PRINTF("Failed to join multicast group\n");
+    PROCESS_EXIT();
+  }
 
 #ifdef RF_CHANNEL
   PRINTF("RF channel: %u\n", RF_CHANNEL);
@@ -908,21 +1381,40 @@ PROCESS_THREAD(rest_server_example, ev, data)
   set_global_address();
   configure_routing();
 #endif
-	etimer_set(&et, 40*CLOCK_SECOND);
-  while(1) {
-    PROCESS_YIELD();
-    if (etimer_expired(&et)) {
-		    printf("sending data\n");
-       etimer_reset(&et);
-		  break;
-    }
-  }
-
 
   /* Initialize the REST engine. */
   rest_init_engine();
 	
    /* Activate the application-specific resources. */
+#if REST_RES_SERVERINFO
+  rest_activate_resource(&resource_serverinfo);
+#endif
+#if REST_RES_ZIG001
+  rest_activate_resource(&resource_zig001);
+#endif
+#if REST_RES_ZIG002
+  rest_activate_resource(&resource_zig002);
+#endif
+#if REST_RES_PH_TOUCH
+  rest_activate_resource(&resource_ph_touch);
+#endif
+#if REST_RES_PH_SONAR
+  rest_activate_resource(&resource_ph_sonar);
+#endif
+#if REST_RES_PH_FLEXIFORCE
+  rest_activate_resource(&resource_ph_flexiforce);
+#endif
+#if REST_RES_PH_MOTION
+  rest_activate_resource(&resource_ph_motion);
+#endif
+#if REST_RES_RFID
+  event_rfid_read = process_alloc_event();
+  rest_activate_event_resource(&resource_rfid);
+#endif
+#if REST_RES_TEMP_CONDOBS
+  rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
+#endif
+
 #if REST_RES_HELLO
   rest_activate_resource(&resource_helloworld);
 #endif
@@ -933,8 +1425,7 @@ PROCESS_THREAD(rest_server_example, ev, data)
   rest_activate_resource(&resource_chunks);
 #endif
 #if REST_RES_PUSHING
-  //rest_activate_periodic_resource(&periodic_resource_pushing);
-  rest_activate_periodic_resource(&periodic_resource_temp); 
+  rest_activate_periodic_resource(&periodic_resource_pushing);
 #endif
 #if defined (PLATFORM_HAS_BUTTON) && REST_RES_EVENT
   rest_activate_event_resource(&resource_event);
@@ -969,6 +1460,16 @@ PROCESS_THREAD(rest_server_example, ev, data)
   SENSORS_ACTIVATE(radio_sensor);
   rest_activate_resource(&resource_radio);
 #endif
+#if REST_RES_RFID
+  PRINTF("activating rfid reader, changing baud rate\n");
+  uart0_init((MSP430_CPU_SPEED)/(BAUDRATE));
+  P4SEL &= ~0x04; // Clear to make it a GPIO (p4.2)
+  P4DIR |= 0x04;
+  //P4OUT |= 0x04; // disable rfid reader
+  P4OUT &= ~0x04; //enable rfid reader
+  uart0_set_input(uart_rx_callback);
+#endif
+  //cc2420_set_txpower(CC2420_TXPOWER_MAX); // Maximum TX power
 
   /* Define application-specific events here. */
   while(1) {
@@ -985,6 +1486,16 @@ PROCESS_THREAD(rest_server_example, ev, data)
       separate_finalize_handler();
 #endif
     }
+#if REST_RES_RFID
+    else if(ev == event_rfid_read) {
+      PRINTF("RFID Event\n");
+      /* Call the event_handler for this application-specific event. */
+      rfid_event_handler(&resource_rfid);
+    }
+#endif
+    else {
+      PRINTF("Unknown Event\n");
+    } 
 #endif /* PLATFORM_HAS_BUTTON */
   } /* while (1) */
 
