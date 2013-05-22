@@ -352,11 +352,13 @@ coap_serialize_message(void *packet, uint8_t *buffer)
   COAP_SERIALIZE_STRING_OPTION( COAP_OPTION_URI_QUERY,      uri_query, '&', "Uri-Query")
   COAP_SERIALIZE_ACCEPT_OPTION( COAP_OPTION_ACCEPT,         accept, "Accept")
   COAP_SERIALIZE_STRING_OPTION( COAP_OPTION_LOCATION_QUERY, location_query, '&', "Location-Query")
+
+  COAP_SERIALIZE_BYTE_OPTION(COAP_OPTION_CONDITION, condition, "Condition"); // Conditional observe
+
   COAP_SERIALIZE_BLOCK_OPTION(  COAP_OPTION_BLOCK2,         block2, "Block2")
   COAP_SERIALIZE_BLOCK_OPTION(  COAP_OPTION_BLOCK1,         block1, "Block1")
   COAP_SERIALIZE_INT_OPTION(    COAP_OPTION_SIZE,           size, "Size")
   COAP_SERIALIZE_STRING_OPTION( COAP_OPTION_PROXY_URI,      proxy_uri, '\0', "Proxy-Uri")
-  COAP_SERIALIZE_INT_OPTION(COAP_OPTION_CONDITION, condition, "Condition"); // Conditional observe
 
   PRINTF("-Done serializing at %p----\n", option);
 
@@ -605,10 +607,19 @@ coap_parse_message(void *packet, uint8_t *data, uint16_t data_len)
         coap_pkt->observe = coap_parse_int_option(current_option, option_length);
         PRINTF("Observe [%lu]\n", coap_pkt->observe);
         break;
+
       case COAP_OPTION_CONDITION: // Conditional observe
-        coap_pkt->condition = coap_parse_int_option(current_option, option_length);
-        PRINTF("Condition [%u]\n", coap_pkt->condition);
+		coap_pkt->condition_len = MIN(COAP_MAX_CONDITION_LEN, option_length);
+        memcpy(coap_pkt->condition, current_option, coap_pkt->condition_len);
+        PRINTF("Condition %u [0x%02X%02X%02X%02X%02X]\n", coap_pkt->condition_len,
+          coap_pkt->condition[0],
+          coap_pkt->condition[1],
+          coap_pkt->condition[2],
+          coap_pkt->condition[3],
+          coap_pkt->condition[4]
+        ); /*FIXME always prints 5 bytes */
         break;
+
       case COAP_OPTION_BLOCK2:
         coap_pkt->block2_num = coap_parse_int_option(current_option, option_length);
         coap_pkt->block2_more = (coap_pkt->block2_num & 0x08)>>3;
