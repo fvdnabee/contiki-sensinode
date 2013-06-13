@@ -61,6 +61,8 @@
 #define COAP_TOKEN_LEN                       8 /* The maximum number of bytes for the Token */
 #define COAP_MAX_ACCEPT_NUM                  2 /* The maximum number of accept preferences to parse/store */
 
+#define COAP_MAX_CONDITION_LEN				 5 /* The maximum number of bytes for the condition option */
+
 #define COAP_HEADER_VERSION_MASK             0xC0
 #define COAP_HEADER_VERSION_POSITION         6
 #define COAP_HEADER_TYPE_MASK                0x30
@@ -171,9 +173,11 @@ typedef enum {
   COAP_OPTION_MAX_AGE = 14,       /* 0-4 B */
   COAP_OPTION_URI_QUERY = 15,     /* 0-270 B */
   COAP_OPTION_ACCEPT = 16,        /* 0-2 B */
+
+  COAP_OPTION_CONDITION = 18,	  /* 1-5 B, Conditional observe */
+  
   COAP_OPTION_TOKEN = 19,         /* 1-8 B */
   COAP_OPTION_LOCATION_QUERY = 20, /* 1-270 B */
-  COAP_OPTION_CONDITION = 22,	  /* 1-5 B, Conditional observe */
   COAP_OPTION_BLOCK2 = 23,        /* 1-3 B */
   COAP_OPTION_BLOCK1 = 27,        /* 1-3 B */
   COAP_OPTION_SIZE = 28,          /* 0-4 B */
@@ -252,7 +256,9 @@ typedef struct {
   const char *uri_query;
   uint8_t if_none_match;
 
-  uint16_t condition; /* Conditional observe */
+/*conditional observe*/
+	uint8_t	condition_len;
+	uint8_t condition[COAP_MAX_CONDITION_LEN];
 
   uint16_t payload_len;
   uint8_t *payload;
@@ -283,7 +289,7 @@ typedef struct {
     }
 #define COAP_SERIALIZE_STRING_OPTION(number, field, splitter, text)      \
     if (IS_OPTION(coap_pkt, number)) { \
-      PRINTF(text" [%.*s]\n", coap_pkt->field##_len, coap_pkt->field); \
+      PRINTF(text" [%*s]\n", coap_pkt->field##_len, coap_pkt->field); \
       option += coap_serialize_array_option(number, current_number, option, (uint8_t *) coap_pkt->field, coap_pkt->field##_len, splitter); \
       current_number = number; \
     }
