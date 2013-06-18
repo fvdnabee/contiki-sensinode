@@ -1001,7 +1001,7 @@ temp_periodic_handler(resource_t *r)
 	PRINTF("/%s: retreived temperature value from sensor\n", r->url);
 #else // use stored values for temperature resource
 	tmp = data[data_iterator++ % 100];	
-	printf("==>from data array:val[%u] = %u\n", data_iterator-1, data[data_iterator-1]);
+	PRINTF("==>from data array:val[%u] = %u\n", data_iterator-1, data[data_iterator-1]);
 #endif
 
   coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */

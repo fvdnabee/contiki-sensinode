@@ -61,129 +61,131 @@ coap_observer_t *
 coap_add_observer(uip_ipaddr_t *addr, uint16_t port, const uint8_t *token, size_t token_len, const char *url, coap_condition_t *condition) // Conditional observe
 {
   /* Remove existing observe relationship, if any. */
-  coap_remove_observer_by_url(addr, port, url);
+	coap_remove_observer_by_url(addr, port, url);
 
-  coap_observer_t *o = memb_alloc(&observers_memb);
+	coap_observer_t *o = memb_alloc(&observers_memb);
 
-  if (o)
-  {
-    o->url = url;
-    uip_ipaddr_copy(&o->addr, addr);
-    o->port = port;
-    o->token_len = token_len;
-    memcpy(o->token, token, token_len);
-    o->last_mid = 0;
+	if (o)
+	{
+		o->url = url;
+		uip_ipaddr_copy(&o->addr, addr);
+		o->port = port;
+		o->token_len = token_len;
+		memcpy(o->token, token, token_len);
+		o->last_mid = 0;
 
-    stimer_set(&o->refresh_timer, COAP_OBSERVING_REFRESH_INTERVAL);
-   
-    o->last_notification_time = clock_seconds();
-    
-    o->last_notified_value = 0;
+		stimer_set(&o->refresh_timer, COAP_OBSERVING_REFRESH_INTERVAL);
 
-    /* Conditional observe */
-		if(condition) {
-    	o->condition.cond_type = condition->cond_type;
-    	o->condition.reliability_flag = condition->reliability_flag;
-    	o->condition.value_type = condition->value_type;
-    	o->condition.value = condition->value;
+		o->last_notification_time = clock_seconds();
+
+		o->last_notified_value = 0;
+
+		/* Conditional observe */
+		if(condition)
+		{
+			o->condition.cond_type = condition->cond_type;
+			o->condition.reliability_flag = condition->reliability_flag;
+			o->condition.value_type = condition->value_type;
+			o->condition.value = condition->value;
 
 			o->cond_observe_flag = 1; /* Conditional Observation*/ 
 
 			PRINTF("Adding conditional observer for /%s [0x%02X%02X] condition=%d\n", o->url, o->token[0], o->token[1], o->condition.value);
 		}
-		else {
+		else
+		{
 			o->cond_observe_flag = 0; /* Normal Observation*/
 
 			PRINTF("Adding normal observer for /%s [0x%02X%02X] \n", o->url, o->token[0], o->token[1]);
 		}
-    
-    list_add(observers_list, o);
-  }
 
-  return o;
+		list_add(observers_list, o);
+	}
+
+	return o;
 }
 /*-----------------------------------------------------------------------------------*/
 void
 coap_remove_observer(coap_observer_t *o)
 {
-  PRINTF("Removing observer for /%s [0x%02X%02X]\n", o->url, o->token[0], o->token[1]);
+	PRINTF("Removing observer for /%s [0x%02X%02X]\n", o->url, o->token[0], o->token[1]);
 
-  memb_free(&observers_memb, o);
-  list_remove(observers_list, o);
+	memb_free(&observers_memb, o);
+	list_remove(observers_list, o);
 }
 
 int
 coap_remove_observer_by_client(uip_ipaddr_t *addr, uint16_t port)
 {
-  int removed = 0;
-  coap_observer_t* obs = NULL;
+	int removed = 0;
+	coap_observer_t* obs = NULL;
 
-  for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
-  {
-    PRINTF("Remove check client ");
-    PRINT6ADDR(addr);
-    PRINTF(":%u\n", port);
-    if (uip_ipaddr_cmp(&obs->addr, addr) && obs->port==port)
-    {
-      coap_remove_observer(obs);
-      removed++;
-    }
-  }
-  return removed;
+	for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
+	{
+		PRINTF("Remove check client ");
+		PRINT6ADDR(addr);
+		PRINTF(":%u\n", port);
+		if (uip_ipaddr_cmp(&obs->addr, addr) && obs->port==port)
+		{
+			coap_remove_observer(obs);
+			removed++;
+		}
+	}
+	return removed;
 }
 
 int
 coap_remove_observer_by_token(uip_ipaddr_t *addr, uint16_t port, uint8_t *token, size_t token_len)
 {
-  int removed = 0;
-  coap_observer_t* obs = NULL;
+	int removed = 0;
+	coap_observer_t* obs = NULL;
 
-  for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
-  {
-//    PRINTF("Remove check Token 0x%02X%02X\n", token[0], token[1]);
-    if (uip_ipaddr_cmp(&obs->addr, addr) && obs->port==port && obs->token_len==token_len && memcmp(obs->token, token, token_len)==0)
-    {
-      coap_remove_observer(obs);
-      removed++;
-    }
-  }
-  return removed;
+	for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
+	{
+		PRINTF("Remove check Token 0x%02X%02X\n", token[0], token[1]);
+		if (uip_ipaddr_cmp(&obs->addr, addr) && obs->port==port && obs->token_len==token_len && memcmp(obs->token, token, token_len)==0)
+		{
+			coap_remove_observer(obs);
+			removed++;
+		}
+	}
+	return removed;
 }
 
 int
 coap_remove_observer_by_url(uip_ipaddr_t *addr, uint16_t port, const char *url)
 {
-  int removed = 0;
-  coap_observer_t* obs = NULL;
+	int removed = 0;
+	coap_observer_t* obs = NULL;
 
-  for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
-  {
-  //  PRINTF("Remove check URL %p\n", url);
-    if ((addr==NULL || (uip_ipaddr_cmp(&obs->addr, addr) && obs->port==port)) && (obs->url==url || memcmp(obs->url, url, strlen(obs->url))==0))
-    {
-      coap_remove_observer(obs);
-      removed++;
-    }
-  }
-  return removed;
+	for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
+	{
+		//  PRINTF("Remove check URL %p\n", url);
+		if ((addr==NULL || (uip_ipaddr_cmp(&obs->addr, addr) && obs->port==port)) && (obs->url==url || memcmp(obs->url, url, strlen(obs->url))==0))
+		{
+			coap_remove_observer(obs);
+			removed++;
+		}
+	}
+	return removed;
 }
 
 int
 coap_remove_observer_by_mid(uip_ipaddr_t *addr, uint16_t port, uint16_t mid)
 {
-  int removed = 0;
-  coap_observer_t* obs = NULL;
+	int removed = 0;
+	coap_observer_t* obs = NULL;
 
-  for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
-  {
-    //PRINTF("Remove check MID %u\n", mid);
-    if (uip_ipaddr_cmp(&obs->addr, addr) && obs->port==port && obs->last_mid==mid)
-    {
-      coap_remove_observer(obs);
-      removed++;
-    }
-  }
-  return removed;
+	for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
+	{
+		//PRINTF("Remove check MID %u\n", mid);
+		if (uip_ipaddr_cmp(&obs->addr, addr) && obs->port==port && obs->last_mid==mid)
+		{
+			coap_remove_observer(obs);
+			removed++;
+		}
+	}
+	return removed;
 }
 /*-----------------------------------------------------------------------------------*/
 void
@@ -208,13 +210,13 @@ coap_notify_observers(resource_t *resource, uint16_t obs_counter, void *notifica
 			{
 				if (!satisfies_condition(obs, cond_value))
 				{
-					printf("Condition not satisfied. Skipping this observer\n");
+					PRINTF("Condition not satisfied. Skipping this observer\n");
 					continue;
 				} 
 				else 
 				{
   			  preferred_type = obs->condition.reliability_flag;
-					printf("Condition Satisfied. Sending Notification...\n");
+					PRINTF("Condition Satisfied. Sending Notification...\n");
 				}
 			}
 			else 											/* Normal Observe */
@@ -222,11 +224,11 @@ coap_notify_observers(resource_t *resource, uint16_t obs_counter, void *notifica
 				if  (obs->last_notified_value != cond_value  || 
             (obs->last_notified_value == cond_value && (clock_seconds() - obs->last_notification_time) >= coap_res->max_age))
 				{
-					printf("Sending Normal Observation Notification... %u\n", cond_value);
+					PRINTF("Sending Normal Observation Notification... %u\n", cond_value);
 				}
 				else
 				{
-					printf("Value not changed. Skipping this observer %u\n", cond_value);
+					PRINTF("Value not changed. Skipping this observer %u\n", cond_value);
 					continue;
 				}
 			}
@@ -307,7 +309,7 @@ coap_observe_handler(resource_t *resource, void *request, void *response)
 					* For demonstration purposes only. A subscription should return the same representation as a normal GET.
 					* TODO: Comment the following line for any real application.
 				*/
-					coap_set_payload(coap_res, content, snprintf(content, sizeof(content), "Added %u/%u", list_length(observers_list), COAP_MAX_OBSERVERS));
+					//coap_set_payload(coap_res, content, snprintf(content, sizeof(content), "Added %u/%u", list_length(observers_list), COAP_MAX_OBSERVERS));
 				}/* if (added observer) */
 				else
 				{
@@ -341,60 +343,60 @@ coap_encode_condition(coap_condition_t *cond, uint8_t *encoded_cond, uint8_t *co
 	
 	encoded_cond[0] = encoded_cond[0] | ((uint8_t) (cond->value_type));
 	
-  /*Encode the value (upto 4 bytes) */
+	/*Encode the value (upto 4 bytes) */
   
-  temp = cond->value; 
-  
-   while (temp > 0) {
-    value = temp << 24;
-    
-    value = value >> 24;
-    
-    encoded_cond[i] = (uint8_t) value;
-    
-    temp = temp >> 8;
-    
-    i++;
-  }
-  
-  *condition_len = i;
-  
-  PRINTF("Encoded: %u [0x%02x%02x%02x%02x]\n",*condition_len, encoded_cond[0], encoded_cond[1], encoded_cond[2], encoded_cond[3]); 
-  
-  return 1;
+	temp = cond->value;
+
+	while (temp > 0) {
+		value = temp << 24;
+
+		value = value >> 24;
+
+		encoded_cond[i] = (uint8_t) value;
+
+		temp = temp >> 8;
+
+		i++;
+	}
+
+	*condition_len = i;
+
+	PRINTF("Encoded: %u [0x%02x%02x%02x%02x]\n",*condition_len, encoded_cond[0], encoded_cond[1], encoded_cond[2], encoded_cond[3]);
+
+	return 1;
 }
 /*------------------------------------------------------------------------------------------*/
 int 
 coap_decode_condition (coap_condition_t *cond, uint8_t *encoded_cond, uint8_t condition_len)
 {
-  uint8_t temp;
-  uint8_t i;
-  uint32_t value = 0;
-  
-  temp = encoded_cond[0];
+	uint8_t temp;
+	uint8_t i;
+	uint32_t value = 0;
 
-  cond->cond_type = temp>>3;
+	temp = encoded_cond[0];
 
-  temp =  temp << 5;
+	cond->cond_type = temp>>3;
 
-  cond->reliability_flag = temp >> 7;
-  
-  temp = temp << 1;
-  
-  cond->value_type = temp >> 6;
+	temp =  temp << 5;
 
-  for(i = 1; i < condition_len; i++) {
+	cond->reliability_flag = temp >> 7;
   
-    value = value << 8;
-    
-    value = value | encoded_cond[i];
-    
-    i++;
-  }
-  cond->value = value;
+	temp = temp << 1;
+
+	cond->value_type = temp >> 6;
+
+	for(i = 1; i < condition_len; i++) {
+
+		value = value << 8;
+
+		value = value | encoded_cond[i];
+
+		i++;
+	}
+	cond->value = value;
 	PRINTF("Decoded: Type: %u value: %u\n", cond->cond_type, cond->value);
 
-  return 1;
+	return 1;
 }
 /*-----------------------------------------------------------------------------------*/
 int 
@@ -402,101 +404,140 @@ satisfies_condition(coap_observer_t *obs, uint32_t cond_value)
 {
 
 	uint8_t satisfied = 0;
-	if (obs->condition.cond_type == CONDITION_TIME_SERIES) {
-		if (obs->last_notified_value != cond_value) {
-				satisfied = 1;
-		}else {
-				return 0;
-		} 
-	}else if (obs->condition.cond_type == CONDITION_MIN_RESP_TIME ) {
-	  /*Notify if the value has changed and the MinRT is >= Time Delta */
-	  if ((obs->last_notified_value != cond_value) && \
-		   (obs->condition.value) <= ( clock_seconds() - obs->last_notification_time)) 
+	if (obs->condition.cond_type == CONDITION_TIME_SERIES)
+	{
+		if (obs->last_notified_value != cond_value)
 		{
-				satisfied = 1;
-		} else 
-		{
-				return 0;
+			satisfied = 1;
 		}
-	}else if (obs->condition.cond_type == CONDITION_MAX_RESP_TIME) { 
+		else
+		{
+			return 0;
+		} 
+	}
+	else if (obs->condition.cond_type == CONDITION_MIN_RESP_TIME )
+	{
+		/*Notify if the value has changed and the MinRT is >= Time Delta */
+		if ((obs->last_notified_value != cond_value) && \
+			(obs->condition.value) <= ( clock_seconds() - obs->last_notification_time))
+		{
+			satisfied = 1;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+	else if (obs->condition.cond_type == CONDITION_MAX_RESP_TIME)
+	{
 		if ((obs->last_notified_value != cond_value) ||
 		    ((obs->last_notified_value == cond_value) && 
 		    ( (obs->condition.value) <= ( clock_seconds() - obs->last_notification_time))) ) 
 		{
-				satisfied = 1;
-		} else {
+			satisfied = 1;
+		}
+		else
+		{
 			return 0;
 		}
-	}else if (obs->condition.cond_type == CONDITION_STEP ) {
-			uint32_t delta = cond_value > obs->last_notified_value ? 
-			                 cond_value - obs->last_notified_value : 
-			                 obs->last_notified_value - cond_value;
-		if (delta >= obs->condition.value) {
-				satisfied = 1;
-		} else {
+	}
+	else if (obs->condition.cond_type == CONDITION_STEP )
+	{
+		uint32_t delta =cond_value > obs->last_notified_value ?
+						cond_value - obs->last_notified_value :
+						obs->last_notified_value - cond_value;
+		if (delta >= obs->condition.value)
+		{
+			satisfied = 1;
+		}
+		else
+		{
 			return 0;
 		}
-	} else if (obs->condition.cond_type == CONDITION_ALLVALUES_LESS) {
-		if ((cond_value < obs->condition.value) && (cond_value != obs->last_notified_value)){
-				satisfied = 1;
-		}else {
+	}
+	else if (obs->condition.cond_type == CONDITION_ALLVALUES_LESS)
+	{
+		if ((cond_value < obs->condition.value) && (cond_value != obs->last_notified_value))
+		{
+			satisfied = 1;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+	else if (obs->condition.cond_type == CONDITION_ALLVALUES_GREATER)
+	{
+		if ((cond_value > obs->condition.value) && (cond_value != obs->last_notified_value))
+		{
+			satisfied = 1;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+	else if (obs->condition.cond_type == CONDITION_VALUE_EQUAL )
+	{
+		if (cond_value == obs->condition.value)
+		{
+			satisfied = 1;
+		}
+		else {
 				return 0;
 		}
-	} else if (obs->condition.cond_type == CONDITION_ALLVALUES_GREATER) {
-
-		if ((cond_value > obs->condition.value) && (cond_value != obs->last_notified_value)) {
-				satisfied = 1;
-		}else {	
-			return 0;
-		}
-	} else if (obs->condition.cond_type == CONDITION_VALUE_EQUAL ) {
-		if (cond_value == obs->condition.value) {
-				satisfied = 1;
-		}else {
-				return 0;
-		}
-	} else if (obs->condition.cond_type == CONDITION_VALUE_NOT_EQUAL ) {
+	}
+	else if (obs->condition.cond_type == CONDITION_VALUE_NOT_EQUAL )
+	{
 		if (((obs->last_notified_value < obs->condition.value) && (obs->condition.value <cond_value))||
 		   ((obs->last_notified_value > obs->condition.value) && (obs->condition.value > cond_value))) {
   				satisfied = 1;
-		}else {
-				return 0;
 		}
-	} else if (obs->condition.cond_type == CONDITION_PERIODIC ) {
+		else
+		{
+			return 0;
+		}
+	}
+	else if (obs->condition.cond_type == CONDITION_PERIODIC )
+	{
 
-		if ((clock_seconds() - obs->last_notification_time) >= obs->condition.value) {
-				satisfied = 1;
-		} else  {
-				return 0;
+		if ((clock_seconds() - obs->last_notification_time) >= obs->condition.value)
+		{
+			satisfied = 1;
 		}
-	}	
+		else
+		{
+			return 0;
+		}
+	}
 	return satisfied; // if satisfied = 0, then condition is not supported yet;
 }
 //---------------------------------------------------------------------------------------------------------------
 int
 coap_set_header_condition(void *packet, uint8_t *condition, uint8_t condition_len)
 {
-  coap_packet_t *const coap_pkt = (coap_packet_t *) packet;
+	coap_packet_t *const coap_pkt = (coap_packet_t *) packet;
   
-  coap_pkt->condition_len = MIN(COAP_MAX_CONDITION_LEN, condition_len);
+	coap_pkt->condition_len = MIN(COAP_MAX_CONDITION_LEN, condition_len);
   
-  memcpy(coap_pkt->condition, condition, coap_pkt->condition_len);
+	memcpy(coap_pkt->condition, condition, coap_pkt->condition_len);
   
-  SET_OPTION(coap_pkt, COAP_OPTION_CONDITION);
-  
-  return coap_pkt->condition_len;
+	SET_OPTION(coap_pkt, COAP_OPTION_CONDITION);
+
+	return coap_pkt->condition_len;
 }
 
 int
 coap_get_header_condition(void *packet, uint8_t **condition)
 {
-  coap_packet_t *const coap_pkt = (coap_packet_t *) packet;
+	coap_packet_t *const coap_pkt = (coap_packet_t *) packet;
 
-  if (!IS_OPTION(coap_pkt, COAP_OPTION_CONDITION) ) return 0;
+	if (!IS_OPTION(coap_pkt, COAP_OPTION_CONDITION) ) return 0;
 
-  *condition = coap_pkt->condition;
+	*condition = coap_pkt->condition;
   
-  return coap_pkt->condition_len;
+	return coap_pkt->condition_len;
 }
 
 //---------------------------------------------------------------------------------------------------------------
+

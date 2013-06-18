@@ -1013,7 +1013,7 @@ int
 coap_get_header_observe(void *packet, uint32_t *observe)
 {
   coap_packet_t *const coap_pkt = (coap_packet_t *) packet;
-printf("-->Getobs=%u\n", coap_pkt->observe);
+
   if (!IS_OPTION(coap_pkt, COAP_OPTION_OBSERVE)) return 0;
 
   *observe = coap_pkt->observe;
