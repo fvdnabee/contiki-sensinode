@@ -92,6 +92,7 @@ coap_parse_int_option(uint8_t *bytes, size_t length)
     var <<= 8;
     var |= 0xFF & bytes[i++];
   }
+
   return var;
 }
 /*-----------------------------------------------------------------------------------*/
@@ -351,10 +352,10 @@ coap_serialize_message(void *packet, uint8_t *buffer)
   COAP_SERIALIZE_INT_OPTION(    COAP_OPTION_MAX_AGE,        max_age, "Max-Age")
   COAP_SERIALIZE_STRING_OPTION( COAP_OPTION_URI_QUERY,      uri_query, '&', "Uri-Query")
   COAP_SERIALIZE_ACCEPT_OPTION( COAP_OPTION_ACCEPT,         accept, "Accept")
-  COAP_SERIALIZE_STRING_OPTION( COAP_OPTION_LOCATION_QUERY, location_query, '&', "Location-Query")
 
   COAP_SERIALIZE_BYTE_OPTION(COAP_OPTION_CONDITION, condition, "Condition"); // Conditional observe
 
+  COAP_SERIALIZE_STRING_OPTION( COAP_OPTION_LOCATION_QUERY, location_query, '&', "Location-Query")
   COAP_SERIALIZE_BLOCK_OPTION(  COAP_OPTION_BLOCK2,         block2, "Block2")
   COAP_SERIALIZE_BLOCK_OPTION(  COAP_OPTION_BLOCK1,         block1, "Block1")
   COAP_SERIALIZE_INT_OPTION(    COAP_OPTION_SIZE,           size, "Size")
@@ -382,7 +383,7 @@ coap_serialize_message(void *packet, uint8_t *buffer)
     return 0;
   }
 
-  PRINTF("-Done %u B (header len %u, payload len %u)-\n", coap_pkt->payload_len + option - buffer, option - buffer, coap_pkt->payload_len);
+ // PRINTF("-Done %u B (header len %u, payload len %u)-\n", coap_pkt->payload_len + option - buffer, option - buffer, coap_pkt->payload_len);
 
   PRINTF("Dump [0x%02X %02X %02X %02X  %02X %02X %02X %02X]\n",
       coap_pkt->buffer[0],
@@ -406,7 +407,7 @@ coap_send_message(uip_ipaddr_t *addr, uint16_t port, uint8_t *data, uint16_t len
   udp_conn->rport = port;
 
   uip_udp_packet_send(udp_conn, data, length);
-  PRINTF("-sent UDP datagram (%u)-\n", length);
+  //PRINTF("-sent UDP datagram (%u)-\n", length);
 
   /* Restore server connection to allow data from any node */
   memset(&udp_conn->ripaddr, 0, sizeof(udp_conn->ripaddr));
@@ -506,7 +507,7 @@ coap_parse_message(void *packet, uint8_t *data, uint16_t data_len)
 
     option_number += option_delta;
 
-    PRINTF("OPTION %u (delta %u, len %u): ", option_number, option_delta, option_length);
+    //PRINTF("OPTION %u (delta %u, len %u): ", option_number, option_delta, option_length);
 
     SET_OPTION(coap_pkt, option_number);
 
@@ -514,16 +515,16 @@ coap_parse_message(void *packet, uint8_t *data, uint16_t data_len)
     {
       case COAP_OPTION_CONTENT_TYPE:
         coap_pkt->content_type = coap_parse_int_option(current_option, option_length);
-        PRINTF("Content-Format [%u]\n", coap_pkt->content_type);
+      //  PRINTF("Content-Format [%u]\n", coap_pkt->content_type);
         break;
       case COAP_OPTION_MAX_AGE:
         coap_pkt->max_age = coap_parse_int_option(current_option, option_length);
-        PRINTF("Max-Age [%lu]\n", coap_pkt->max_age);
+        //PRINTF("Max-Age [%lu]\n", coap_pkt->max_age);
         break;
       case COAP_OPTION_ETAG:
         coap_pkt->etag_len = MIN(COAP_ETAG_LEN, option_length);
         memcpy(coap_pkt->etag, current_option, coap_pkt->etag_len);
-        PRINTF("ETag %u [0x%02X%02X%02X%02X%02X%02X%02X%02X]\n", coap_pkt->etag_len,
+   /*     PRINTF("ETag %u [0x%02X%02X%02X%02X%02X%02X%02X%02X]\n", coap_pkt->etag_len,
           coap_pkt->etag[0],
           coap_pkt->etag[1],
           coap_pkt->etag[2],
@@ -532,7 +533,7 @@ coap_parse_message(void *packet, uint8_t *data, uint16_t data_len)
           coap_pkt->etag[5],
           coap_pkt->etag[6],
           coap_pkt->etag[7]
-        ); /*FIXME always prints 8 bytes */
+        );*/ /*FIXME always prints 8 bytes */
         break;
       case COAP_OPTION_ACCEPT:
         if (coap_pkt->accept_num < COAP_MAX_ACCEPT_NUM)
@@ -565,7 +566,7 @@ coap_parse_message(void *packet, uint8_t *data, uint16_t data_len)
       case COAP_OPTION_URI_HOST:
         coap_pkt->uri_host = (char *) current_option;
         coap_pkt->uri_host_len = option_length;
-        PRINTF("Uri-Host [%.*s]\n", coap_pkt->uri_host_len, coap_pkt->uri_host);
+        PRINTF("Uri-Host [%*s]\n", coap_pkt->uri_host_len, coap_pkt->uri_host);
         break;
       case COAP_OPTION_URI_PORT:
         coap_pkt->uri_port = coap_parse_int_option(current_option, option_length);
@@ -574,23 +575,23 @@ coap_parse_message(void *packet, uint8_t *data, uint16_t data_len)
       case COAP_OPTION_URI_PATH:
         /* coap_merge_multi_option() operates in-place on the IPBUF, but final packet field should be const string -> cast to string */
         coap_merge_multi_option( (char **) &(coap_pkt->uri_path), &(coap_pkt->uri_path_len), current_option, option_length, '/');
-        PRINTF("Uri-Path [%.*s]\n", coap_pkt->uri_path_len, coap_pkt->uri_path);
+        PRINTF("Uri-Path [%*s]\n", coap_pkt->uri_path_len, coap_pkt->uri_path);
         break;
       case COAP_OPTION_URI_QUERY:
         /* coap_merge_multi_option() operates in-place on the IPBUF, but final packet field should be const string -> cast to string */
         coap_merge_multi_option( (char **) &(coap_pkt->uri_query), &(coap_pkt->uri_query_len), current_option, option_length, '&');
-        PRINTF("Uri-Query [%.*s]\n", coap_pkt->uri_query_len, coap_pkt->uri_query);
+        PRINTF("Uri-Query [%*s]\n", coap_pkt->uri_query_len, coap_pkt->uri_query);
         break;
 
       case COAP_OPTION_LOCATION_PATH:
         /* coap_merge_multi_option() operates in-place on the IPBUF, but final packet field should be const string -> cast to string */
         coap_merge_multi_option( (char **) &(coap_pkt->location_path), &(coap_pkt->location_path_len), current_option, option_length, '/');
-        PRINTF("Location-Path [%.*s]\n", coap_pkt->location_path_len, coap_pkt->location_path);
+        PRINTF("Location-Path [%*s]\n", coap_pkt->location_path_len, coap_pkt->location_path);
         break;
       case COAP_OPTION_LOCATION_QUERY:
         /* coap_merge_multi_option() operates in-place on the IPBUF, but final packet field should be const string -> cast to string */
         coap_merge_multi_option( (char **) &(coap_pkt->location_query), &(coap_pkt->location_query_len), current_option, option_length, '&');
-        PRINTF("Location-Query [%.*s]\n", coap_pkt->location_query_len, coap_pkt->location_query);
+        PRINTF("Location-Query [%*s]\n", coap_pkt->location_query_len, coap_pkt->location_query);
         break;
 
       case COAP_OPTION_PROXY_URI:
@@ -598,14 +599,14 @@ coap_parse_message(void *packet, uint8_t *data, uint16_t data_len)
         coap_pkt->proxy_uri = (char *) current_option;
         coap_pkt->proxy_uri_len = option_length;
         /*TODO length > 270 not implemented (actually not required) */
-        PRINTF("Proxy-Uri NOT IMPLEMENTED [%.*s]\n", coap_pkt->proxy_uri_len, coap_pkt->proxy_uri);
+        PRINTF("Proxy-Uri NOT IMPLEMENTED [%*s]\n", coap_pkt->proxy_uri_len, coap_pkt->proxy_uri);
         coap_error_message = "This is a constrained server (Contiki)";
         return PROXYING_NOT_SUPPORTED_5_05;
         break;
 
       case COAP_OPTION_OBSERVE:
         coap_pkt->observe = coap_parse_int_option(current_option, option_length);
-        PRINTF("Observe [%lu]\n", coap_pkt->observe);
+        PRINTF("Observe [%u]\n", coap_pkt->observe);
         break;
 
       case COAP_OPTION_CONDITION: // Conditional observe
@@ -1012,7 +1013,7 @@ int
 coap_get_header_observe(void *packet, uint32_t *observe)
 {
   coap_packet_t *const coap_pkt = (coap_packet_t *) packet;
-
+printf("-->Getobs=%u\n", coap_pkt->observe);
   if (!IS_OPTION(coap_pkt, COAP_OPTION_OBSERVE)) return 0;
 
   *observe = coap_pkt->observe;
@@ -1024,7 +1025,7 @@ coap_set_header_observe(void *packet, uint32_t observe)
 {
   coap_packet_t *const coap_pkt = (coap_packet_t *) packet;
 
-  coap_pkt->observe = observe;
+  coap_pkt->observe = observe; 
   SET_OPTION(coap_pkt, COAP_OPTION_OBSERVE);
   return 1;
 }

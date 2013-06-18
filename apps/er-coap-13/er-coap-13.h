@@ -173,11 +173,11 @@ typedef enum {
   COAP_OPTION_MAX_AGE = 14,       /* 0-4 B */
   COAP_OPTION_URI_QUERY = 15,     /* 0-270 B */
   COAP_OPTION_ACCEPT = 16,        /* 0-2 B */
+
+  COAP_OPTION_CONDITION = 18,	  /* 1-5 B, Conditional observe */
+  
   COAP_OPTION_TOKEN = 19,         /* 1-8 B */
   COAP_OPTION_LOCATION_QUERY = 20, /* 1-270 B */
-
-  COAP_OPTION_CONDITION = 26,	  /* 1-5 B, Conditional observe */
-  
   COAP_OPTION_BLOCK2 = 23,        /* 1-3 B */
   COAP_OPTION_BLOCK1 = 27,        /* 1-3 B */
   COAP_OPTION_SIZE = 28,          /* 0-4 B */
@@ -289,7 +289,7 @@ typedef struct {
     }
 #define COAP_SERIALIZE_STRING_OPTION(number, field, splitter, text)      \
     if (IS_OPTION(coap_pkt, number)) { \
-      PRINTF(text" [%.*s]\n", coap_pkt->field##_len, coap_pkt->field); \
+      PRINTF(text" [%*s]\n", coap_pkt->field##_len, coap_pkt->field); \
       option += coap_serialize_array_option(number, current_number, option, (uint8_t *) coap_pkt->field, coap_pkt->field##_len, splitter); \
       current_number = number; \
     }

@@ -99,8 +99,9 @@ typedef struct coap_observer {
 
   /* Conditional observe */
   coap_condition_t condition; 
-  unsigned long last_notification_time; /* Used with time-based conditions */
-	uint32_t			last_notified_value;    /* Used with all conds to check if last notified value is different from the current value*/
+  uint32_t      last_notification_time; 	/* Used with time-based conditions and compare max-age  */
+	uint32_t			last_notified_value;    	/* Used with all conds to check if last notified value is different from the current value*/
+	uint8_t 			cond_observe_flag; 		/*0 = Normal Observe, 1 = Conditional Observe*/
 	/*-----------------*/
 
 } coap_observer_t;

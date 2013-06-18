@@ -98,7 +98,6 @@ static struct etimer et;
 /* leading and ending slashes only for demo purposes, get cropped automatically when setting the Uri-Path */
 char* service_urls[NUMBER_OF_URLS] = {".well-known/core", "/sensors/temp", "battery/", "error/in//path"};
 #if PLATFORM_HAS_BUTTON
-static int uri_switch = 0;
 #endif
 
 /* This function is will be passed to COAP_BLOCKING_REQUEST() to handle responses. */
@@ -108,7 +107,7 @@ client_chunk_handler(void *response)
   const uint8_t *chunk;
 
   int len = coap_get_payload(response, &chunk);
-  printf("|%.*s", len, (char *)chunk);
+  printf("|%*s", len, (char *)chunk);
 }
 
 
@@ -129,7 +128,7 @@ PROCESS_THREAD(coap_client_example, ev, data)
   coap_receiver_init();
 
   static struct etimer et;
-  etimer_set(&et, 40*CLOCK_SECOND);
+  etimer_set(&et, 1*CLOCK_SECOND);
 
   while(1) {
     PROCESS_YIELD();
@@ -139,7 +138,7 @@ PROCESS_THREAD(coap_client_example, ev, data)
 		  break;
     }
   }
-  
+
   coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);
 	coap_set_header_uri_path(request, service_urls[1]);
 
@@ -147,14 +146,14 @@ PROCESS_THREAD(coap_client_example, ev, data)
 	PRINTF(" : %u\n", UIP_HTONS(REMOTE_PORT));
 
 	cond.cond_type = CONDITION_ALLVALUES_GREATER;
-	cond.reliability_flag = NON;
+	cond.reliability_flag = CON;
 	cond.value_type = INTEGER;
-	cond.value = 17;
+	cond.value = 22;
 
 	coap_encode_condition(&cond, encoded_cond, &condition_len);
-  coap_set_header_condition(request, encoded_cond, condition_len);
+  	coap_set_header_condition(request, encoded_cond, condition_len);
 
-	coap_set_header_observe(request, 10);
+	coap_set_header_observe(request, 1);
   COAP_BLOCKING_REQUEST(&server_ipaddr, REMOTE_PORT, request, client_chunk_handler);
 
   printf("\n--Done--\n");

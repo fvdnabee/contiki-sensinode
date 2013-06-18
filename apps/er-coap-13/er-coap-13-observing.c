@@ -75,6 +75,10 @@ coap_add_observer(uip_ipaddr_t *addr, uint16_t port, const uint8_t *token, size_
     o->last_mid = 0;
 
     stimer_set(&o->refresh_timer, COAP_OBSERVING_REFRESH_INTERVAL);
+   
+    o->last_notification_time = clock_seconds();
+    
+    o->last_notified_value = 0;
 
     /* Conditional observe */
 		if(condition) {
@@ -83,14 +87,16 @@ coap_add_observer(uip_ipaddr_t *addr, uint16_t port, const uint8_t *token, size_
     	o->condition.value_type = condition->value_type;
     	o->condition.value = condition->value;
 
-			stimer_set(&o->refresh_timer, COAP_OBSERVING_REFRESH_INTERVAL);
-    
-    	o->last_notification_time = 0;
-    
-    	o->last_notified_value = 0;
+			o->cond_observe_flag = 1; /* Conditional Observation*/ 
+
+			PRINTF("Adding conditional observer for /%s [0x%02X%02X] condition=%d\n", o->url, o->token[0], o->token[1], o->condition.value);
 		}
-	
-    PRINTF("Adding observer for /%s [0x%02X%02X] cond=%d\n", o->url, o->token[0], o->token[1], o->condition.value);
+		else {
+			o->cond_observe_flag = 0; /* Normal Observation*/
+
+			PRINTF("Adding normal observer for /%s [0x%02X%02X] \n", o->url, o->token[0], o->token[1]);
+		}
+    
     list_add(observers_list, o);
   }
 
@@ -134,7 +140,7 @@ coap_remove_observer_by_token(uip_ipaddr_t *addr, uint16_t port, uint8_t *token,
 
   for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
   {
-    PRINTF("Remove check Token 0x%02X%02X\n", token[0], token[1]);
+//    PRINTF("Remove check Token 0x%02X%02X\n", token[0], token[1]);
     if (uip_ipaddr_cmp(&obs->addr, addr) && obs->port==port && obs->token_len==token_len && memcmp(obs->token, token, token_len)==0)
     {
       coap_remove_observer(obs);
@@ -152,7 +158,7 @@ coap_remove_observer_by_url(uip_ipaddr_t *addr, uint16_t port, const char *url)
 
   for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
   {
-    PRINTF("Remove check URL %p\n", url);
+  //  PRINTF("Remove check URL %p\n", url);
     if ((addr==NULL || (uip_ipaddr_cmp(&obs->addr, addr) && obs->port==port)) && (obs->url==url || memcmp(obs->url, url, strlen(obs->url))==0))
     {
       coap_remove_observer(obs);
@@ -170,7 +176,7 @@ coap_remove_observer_by_mid(uip_ipaddr_t *addr, uint16_t port, uint16_t mid)
 
   for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
   {
-    PRINTF("Remove check MID %u\n", mid);
+    //PRINTF("Remove check MID %u\n", mid);
     if (uip_ipaddr_cmp(&obs->addr, addr) && obs->port==port && obs->last_mid==mid)
     {
       coap_remove_observer(obs);
@@ -183,118 +189,140 @@ coap_remove_observer_by_mid(uip_ipaddr_t *addr, uint16_t port, uint16_t mid)
 void
 coap_notify_observers(resource_t *resource, uint16_t obs_counter, void *notification, uint32_t cond_value) // Conditional observe
 {
-  coap_packet_t *const coap_res = (coap_packet_t *) notification;
-  coap_observer_t* obs = NULL;
-  uint8_t preferred_type = coap_res->type;
+	coap_packet_t *const coap_res = (coap_packet_t *) notification;
 
-  static uint32_t last_value = 0; // Conditional observe
+	coap_observer_t* obs = NULL;
 
-  printf("Observing: Notification from %s\n", resource->url);
+	uint8_t preferred_type = coap_res->type;
+	
+	PRINTF("Observing: Notification from %s\n", resource->url);
+	
+	/* Iterate over observers. */
+	for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
+	{
+		if (obs->url==resource->url) 			/* using RESOURCE url pointer as handle. */
+		{
+			coap_transaction_t *transaction = NULL;
 
-  /* Iterate over observers. */
-  for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
-  {
-    if (obs->url==resource->url) /* using RESOURCE url pointer as handle */
-    {
-      coap_transaction_t *transaction = NULL;
+			if (obs->cond_observe_flag) 				/* Conditional observe */
+			{
+				if (!satisfies_condition(obs, cond_value))
+				{
+					printf("Condition not satisfied. Skipping this observer\n");
+					continue;
+				} 
+				else 
+				{
+  			  preferred_type = obs->condition.reliability_flag;
+					printf("Condition Satisfied. Sending Notification...\n");
+				}
+			}
+			else 											/* Normal Observe */
+			{
+				if  (obs->last_notified_value != cond_value  || 
+            (obs->last_notified_value == cond_value && (clock_seconds() - obs->last_notification_time) >= coap_res->max_age))
+				{
+					printf("Sending Normal Observation Notification... %u\n", cond_value);
+				}
+				else
+				{
+					printf("Value not changed. Skipping this observer %u\n", cond_value);
+					continue;
+				}
+			}
+			
+			/*TODO implement special transaction for CON, sharing the same buffer to allow for more observers. */
+			
+			if ( (transaction = coap_new_transaction(coap_get_mid(), &obs->addr, obs->port)) )
+			{
+				PRINTF("           Observer ");
+				PRINT6ADDR(&obs->addr);
+				PRINTF(":%u\n", obs->port);
 
-      /* Conditional observe */
-      if (!satisfies_condition(obs, cond_value)) {
-        //last_value = cond_value;
-        printf("Conditional observe: new value doesn't satisfy condition, skipping this observer");
-        continue;
-      }
+				/* Update last MID for RST matching. */
+				obs->last_mid = transaction->mid;
+			
+				/* Prepare response */
+				coap_res->mid = transaction->mid;
+				if (obs_counter >= 0) coap_set_header_observe(coap_res, obs_counter);
 
-      printf("Satisfies Condition Obs Cond =%u serv val = %u\n", obs->condition.value, cond_value);
+				coap_set_header_token(coap_res, obs->token, obs->token_len);
+			
+				/* Use CON to check whether client is still there/interested after COAP_OBSERVING_REFRESH_INTERVAL. */
+				if (stimer_expired(&obs->refresh_timer))
+				{
+					PRINTF("           Refreshing with CON\n");
+					coap_res->type = COAP_TYPE_CON;
+					stimer_restart(&obs->refresh_timer);
+				}
+				else
+				{
+					coap_res->type = preferred_type; 
+				}
+				transaction->packet_len = coap_serialize_message(coap_res, transaction->packet);
 
-      /*TODO implement special transaction for CON, sharing the same buffer to allow for more observers. */
+				coap_send_transaction(transaction);
 
-      if ( (transaction = coap_new_transaction(coap_get_mid(), &obs->addr, obs->port)) )
-      {
-        PRINTF("           Observer ");
-        PRINT6ADDR(&obs->addr);
-        PRINTF(":%u\n", obs->port);
+				obs->last_notified_value = cond_value;
 
-        /* Update last MID for RST matching. */
-        obs->last_mid = transaction->mid;
+				obs->last_notification_time = clock_seconds();
 
-        /* Prepare response */
-        coap_res->mid = transaction->mid;
-        if (obs_counter>=0) coap_set_header_observe(coap_res, obs_counter);
-
-	/* Conditional observe: if observer has a condition set, then add it to the coap header */
-	//if (obs->condition.value != 0) { // FIXME: if Condition option isn't set, &obs->condition should be NULL?
-	//  coap_set_header_condition(coap_res, cond_value);
-	//}
-        coap_set_header_token(coap_res, obs->token, obs->token_len);
-
-        /* Use CON to check whether client is still there/interested after COAP_OBSERVING_REFRESH_INTERVAL. */
-        if (stimer_expired(&obs->refresh_timer))
-        {
-          PRINTF("           Refreshing with CON\n");
-          coap_res->type = COAP_TYPE_CON;
-          stimer_restart(&obs->refresh_timer);
-        }
-        else
-        {
-          coap_res->type = preferred_type;
-        }
-
-        transaction->packet_len = coap_serialize_message(coap_res, transaction->packet);
-
-        coap_send_transaction(transaction);
-      }
-    }
-  }
+			} /*if transaction*/
+		}/*if obs_url*/
+	} /*for */
 }
 /*-----------------------------------------------------------------------------------*/
 void
 coap_observe_handler(resource_t *resource, void *request, void *response)
 {
-  coap_packet_t *const coap_req = (coap_packet_t *) request;
-  coap_packet_t *const coap_res = (coap_packet_t *) response;
+	coap_packet_t *const coap_req = (coap_packet_t *) request;
+	coap_packet_t *const coap_res = (coap_packet_t *) response;
 
-  static char content[16];
-  coap_condition_t cond; // Conditional Observe
+	static char content[16];
+	coap_condition_t cond; // Conditional Observe
 
-  if (coap_req->code==COAP_GET && coap_res->code<128) /* GET request and response without error code */
-  {
-    if (IS_OPTION(coap_req, COAP_OPTION_OBSERVE))
-    {
-			if(IS_OPTION(coap_req, COAP_OPTION_CONDITION)) 
+	if (coap_req->code==COAP_GET && coap_res->code<128) /* GET request and response without error code */
+	{
+		if (IS_OPTION(coap_req, COAP_OPTION_OBSERVE))
+		{
+			if(IS_OPTION(coap_req, COAP_OPTION_CONDITION)) 		/*Conditional Observe */
 			{
 				if (coap_decode_condition(&cond, coap_req->condition, coap_req->condition_len))
 				{
 					if(coap_add_observer(&UIP_IP_BUF->srcipaddr, UIP_UDP_BUF->srcport, coap_req->token, coap_req->token_len, resource->url, &cond))
 					{
 						coap_set_header_observe(coap_res, 0);
-	    		       coap_set_payload(coap_res, content, snprintf(content, sizeof(content), "Added with condition%u/%u", list_length(observers_list), COAP_MAX_OBSERVERS));
-					}
-				}
-			}
-			else {
-        if (coap_add_observer(&UIP_IP_BUF->srcipaddr, UIP_UDP_BUF->srcport, coap_req->token, coap_req->token_len, resource->url, NULL))
-        {
-          coap_set_header_observe(coap_res, 0);
-          /*
-          * For demonstration purposes only. A subscription should return the same representation as a normal GET.
-          * TODO: Comment the following line for any real application.
-          */
-          coap_set_payload(coap_res, content, snprintf(content, sizeof(content), "Added %u/%u", list_length(observers_list), COAP_MAX_OBSERVERS));
-        }
-        else
-        {
-          coap_res->code = SERVICE_UNAVAILABLE_5_03;
-          coap_set_payload(coap_res, "TooManyObservers", 16);
-        } /* if (added observer) */
-      }
-    }
-    else /* if (observe) */
-    {
-      /* Remove client if it is currently observing. */
-      coap_remove_observer_by_url(&UIP_IP_BUF->srcipaddr, UIP_UDP_BUF->srcport, resource->url);
-    } /* if (observe) */
-  }
+						coap_set_payload(coap_res, content, snprintf(content, sizeof(content), "Added with condition%u/%u", list_length(observers_list), COAP_MAX_OBSERVERS));
+						
+					} /*if (add observer)*/
+				}/*if(decode condition)*/
+			}/*is (option observe)*/
+			
+			else						/* Normal Observe */ 
+			{
+				if (coap_add_observer(&UIP_IP_BUF->srcipaddr, UIP_UDP_BUF->srcport, coap_req->token, coap_req->token_len, resource->url, NULL))
+				{
+					coap_set_header_observe(coap_res, 0);
+				/*
+					* For demonstration purposes only. A subscription should return the same representation as a normal GET.
+					* TODO: Comment the following line for any real application.
+				*/
+					coap_set_payload(coap_res, content, snprintf(content, sizeof(content), "Added %u/%u", list_length(observers_list), COAP_MAX_OBSERVERS));
+				}/* if (added observer) */
+				else
+				{
+					coap_res->code = SERVICE_UNAVAILABLE_5_03;
+					coap_set_payload(coap_res, "TooManyObservers", 16);
+				} /* if(cant add observer)*/
+				
+			} /* if (normal observe) */
+		}
+		else /* if (observe) */
+		{
+			/* Remove client if it is currently observing. */
+			coap_remove_observer_by_url(&UIP_IP_BUF->srcipaddr, UIP_UDP_BUF->srcport, resource->url);
+		} /* if (observe) */
+	} /* if (GET) */
 }
 
 /*------------------------------------------------------------------------------------*/
@@ -304,7 +332,7 @@ coap_encode_condition(coap_condition_t *cond, uint8_t *encoded_cond, uint8_t *co
 {
 	uint32_t temp = 0;
 	uint32_t value = 0;
-	uint8_t i = 0;
+	uint8_t i = 1;
 	
 	/*Encode the header*/
 	encoded_cond[0] = (uint8_t) (cond->cond_type) << 3;
@@ -315,7 +343,7 @@ coap_encode_condition(coap_condition_t *cond, uint8_t *encoded_cond, uint8_t *co
 	
   /*Encode the value (upto 4 bytes) */
   
-  temp = cond->value; i++;
+  temp = cond->value; 
   
    while (temp > 0) {
     value = temp << 24;
@@ -331,7 +359,7 @@ coap_encode_condition(coap_condition_t *cond, uint8_t *encoded_cond, uint8_t *co
   
   *condition_len = i;
   
-  printf("Encoded: %u [0x%02x%02x%02x%02x]\n",*condition_len, encoded_cond[0], encoded_cond[1], encoded_cond[2], encoded_cond[3]); 
+  PRINTF("Encoded: %u [0x%02x%02x%02x%02x]\n",*condition_len, encoded_cond[0], encoded_cond[1], encoded_cond[2], encoded_cond[3]); 
   
   return 1;
 }
@@ -363,9 +391,9 @@ coap_decode_condition (coap_condition_t *cond, uint8_t *encoded_cond, uint8_t co
     
     i++;
   }
-  
   cond->value = value;
-printf("Decoded: Type: %u value: %u\n", cond->cond_type, cond->value);
+	PRINTF("Decoded: Type: %u value: %u\n", cond->cond_type, cond->value);
+
   return 1;
 }
 /*-----------------------------------------------------------------------------------*/
@@ -375,7 +403,7 @@ satisfies_condition(coap_observer_t *obs, uint32_t cond_value)
 
 	uint8_t satisfied = 0;
 	if (obs->condition.cond_type == CONDITION_TIME_SERIES) {
-		if (obs->condition.value != cond_value && obs->last_notified_value != cond_value) {
+		if (obs->last_notified_value != cond_value) {
 				satisfied = 1;
 		}else {
 				return 0;
@@ -416,7 +444,7 @@ satisfies_condition(coap_observer_t *obs, uint32_t cond_value)
 		}
 	} else if (obs->condition.cond_type == CONDITION_ALLVALUES_GREATER) {
 
-		if ((cond_value > obs->condition.value) ){//&& (cond_value != obs->last_notified_value)) {
+		if ((cond_value > obs->condition.value) && (cond_value != obs->last_notified_value)) {
 				satisfied = 1;
 		}else {	
 			return 0;
@@ -441,10 +469,8 @@ satisfies_condition(coap_observer_t *obs, uint32_t cond_value)
 		} else  {
 				return 0;
 		}
-	}
-	if (satisfied)  obs->last_notification_time = clock_seconds();
-	
-	return satisfied; // if satisfied = 0, then condition not supported yet;
+	}	
+	return satisfied; // if satisfied = 0, then condition is not supported yet;
 }
 //---------------------------------------------------------------------------------------------------------------
 int
