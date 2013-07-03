@@ -77,9 +77,7 @@
 #endif
 
 /* TODO: This server address is hard-coded for Cooja. */
-//#define SERVER_NODE(ipaddr)   uip_ip6addr(ipaddr, 0xaaaa, 0, 0, 0, 0x0212, 0x7402, 0x0002, 0x0202) /* cooja2 */
-
-#define SERVER_NODE(ipaddr)   uip_ip6addr(ipaddr, 0xaaaa, 0, 0, 0, 0xc30c, 0, 0, 0x0002) /*Z1 Mote*/
+#define SERVER_NODE(ipaddr)   uip_ip6addr(ipaddr, 0xaaaa, 0, 0, 0, 0x0212, 0x7402, 0x0002, 0x0202) /* cooja2 */
 
 #define LOCAL_PORT      UIP_HTONS(COAP_DEFAULT_PORT+1)
 #define REMOTE_PORT     UIP_HTONS(COAP_DEFAULT_PORT)
@@ -96,8 +94,9 @@ static struct etimer et;
 /* Example URIs that can be queried. */
 #define NUMBER_OF_URLS 4
 /* leading and ending slashes only for demo purposes, get cropped automatically when setting the Uri-Path */
-char* service_urls[NUMBER_OF_URLS] = {".well-known/core", "/sensors/temp", "battery/", "error/in//path"};
+char* service_urls[NUMBER_OF_URLS] = {".well-known/core", "/actuators/toggle", "battery/", "error/in//path"};
 #if PLATFORM_HAS_BUTTON
+static int uri_switch = 0;
 #endif
 
 /* This function is will be passed to COAP_BLOCKING_REQUEST() to handle responses. */
@@ -107,7 +106,7 @@ client_chunk_handler(void *response)
   const uint8_t *chunk;
 
   int len = coap_get_payload(response, &chunk);
-  PRINTF("|%*s", len, (char *)chunk);
+  printf("|%.*s", len, (char *)chunk);
 }
 
 
@@ -118,45 +117,90 @@ PROCESS_THREAD(coap_client_example, ev, data)
   static coap_packet_t request[1]; /* This way the packet can be treated as pointer as usual. */
   SERVER_NODE(&server_ipaddr);
 
-	/* Conditional observe */
-	coap_condition_t cond;
-	uint8_t encoded_cond[COAP_MAX_CONDITION_LEN];
-	uint8_t condition_len;
-
+/* Conditional observe */
+#ifdef CONDITION
+  coap_condition_t cond;
+  uint16_t encoded_cond;
+#endif
 
   /* receives all CoAP messages */
   coap_receiver_init();
 
-  static struct etimer et;
-  etimer_set(&et, 1*CLOCK_SECOND);
+  etimer_set(&et, TOGGLE_INTERVAL * CLOCK_SECOND);
+
+#if PLATFORM_HAS_BUTTON
+  SENSORS_ACTIVATE(button_sensor);
+  printf("Press a button to request %s\n", service_urls[uri_switch]);
+#endif
 
   while(1) {
     PROCESS_YIELD();
+
     if (etimer_expired(&et)) {
-	    PRINTF("sending data\n");
+      printf("--Toggle timer--\n");
+
+      /* prepare request, TID is set by COAP_BLOCKING_REQUEST() */
+      coap_init_message(request, COAP_TYPE_CON, COAP_POST, 0 );
+      coap_set_header_uri_path(request, service_urls[1]);
+
+      const char msg[] = "Toggle!";
+      coap_set_payload(request, (uint8_t *)msg, sizeof(msg)-1);
+
+
+      PRINT6ADDR(&server_ipaddr);
+      PRINTF(" : %u\n", UIP_HTONS(REMOTE_PORT));
+
+      /* Conditional observe */
+#ifdef CONDITION
+      /* Condition 1 = X > 22 */
+      cond.cond_type = CONDITION_PERIODIC;
+      cond.reliability_flag = NON;
+      cond.value_type = INTEGER;
+      cond.value = 10;
+
+      coap_encode_condition(&cond, &encoded_cond);
+      coap_set_header_condition(request, encoded_cond);
+
+      /* Condition 2 = X < 27 */
+      /*
+      cond.cond_type = CONDITION_ALLVALUES_LESS;
+      cond.reliability_flag = CON;
+      cond.value_type = INTEGER;
+      cond.value = 27;
+
+      coap_encode_condition(&cond, &encoded_cond);
+      coap_set_header_condition(request, encoded_cond);
+      */
+#endif
+
+      COAP_BLOCKING_REQUEST(&server_ipaddr, REMOTE_PORT, request, client_chunk_handler);
+
+      printf("\n--Done--\n");
+
       etimer_reset(&et);
-		  break;
+
+#if PLATFORM_HAS_BUTTON
+    } else if (ev == sensors_event && data == &button_sensor) {
+
+      /* send a request to notify the end of the process */
+
+      coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);
+      coap_set_header_uri_path(request, service_urls[uri_switch]);
+
+      printf("--Requesting %s--\n", service_urls[uri_switch]);
+
+      PRINT6ADDR(&server_ipaddr);
+      PRINTF(" : %u\n", UIP_HTONS(REMOTE_PORT));
+
+      COAP_BLOCKING_REQUEST(&server_ipaddr, REMOTE_PORT, request, client_chunk_handler);
+
+      printf("\n--Done--\n");
+
+      uri_switch = (uri_switch+1) % NUMBER_OF_URLS;
+#endif
+
     }
   }
-
-  coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);
-	coap_set_header_uri_path(request, service_urls[1]);
-
-	PRINT6ADDR(&server_ipaddr);
-	PRINTF(" : %u\n", UIP_HTONS(REMOTE_PORT));
-
-	cond.cond_type = CONDITION_ALLVALUES_GREATER;
-	cond.reliability_flag = CON;
-	cond.value_type = INTEGER;
-	cond.value = 22;
-
-	coap_encode_condition(&cond, encoded_cond, &condition_len);
-  	coap_set_header_condition(request, encoded_cond, condition_len);
-
-	coap_set_header_observe(request, 1);
-  COAP_BLOCKING_REQUEST(&server_ipaddr, REMOTE_PORT, request, client_chunk_handler);
-
-  PRINTF("\n--Done--\n");
 
   PROCESS_END();
 }

@@ -232,7 +232,7 @@ struct rest_implementation {
   int (* get_post_variable)(void *request, const char *name, const char **value);
 
   /** Send the payload to all subscribers of the resource at url. */
-  void (* notify_subscribers)(resource_t *resource, uint16_t counter, void *notification, uint32_t cond_value); // Conditional observe
+  void (* notify_subscribers)(resource_t *resource, uint16_t counter, void *notification, uint8_t cond_value); // Conditional observe
 
   /** The handler for resource subscriptions. */
   restful_post_handler subscription_handler;

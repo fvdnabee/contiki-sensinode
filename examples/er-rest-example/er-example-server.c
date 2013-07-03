@@ -72,8 +72,9 @@
 #define REST_RES_PH_SONAR         0
 #define REST_RES_PH_FLEXIFORCE    0
 #define REST_RES_PH_MOTION        0
-#define REST_RES_RFID		  1
+#define REST_RES_RFID		  0
 #define REST_RES_TEMP_CONDOBS	  0
+#define REST_RES_REED  		  1
 
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
@@ -266,15 +267,23 @@ void zig001_handler(void* request, void* response, uint8_t *buffer, uint16_t pre
 }
 #endif // REST_RES_LEDS_ZIG001
 
-#if REST_RES_ZIG002
-RESOURCE(zig002, METHOD_GET , "digital/zig002_light", "Usage=\"..\"");
-void zig002_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+#if REST_RES_REED
+static uint8_t reed_state;
+
+PERIODIC_RESOURCE(reed, METHOD_GET , "phidget/reed", "Usage=\"..\";obs",CLOCK_SECOND);
+void reed_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
   char message[REST_MAX_CHUNK_SIZE];
   int length;
 
-  light_ziglet_init();
-  length = sprintf(message, "Lichtsterkte: %u lux\n", light_ziglet_read());
+  reed_state = P4IN & 0x02;
+
+  PRINTF("reed state: %u\n",reed_state);
+  if(reed_state) {
+    length = sprintf(message, "Reed sensor opened");
+  } else {
+    length = sprintf(message, "Reed sensor closed");
+  } 
 
   if(length>=0) {
     memcpy(buffer, message, length);
@@ -282,6 +291,94 @@ void zig002_handler(void* request, void* response, uint8_t *buffer, uint16_t pre
   REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
   REST.set_header_etag(response, (uint8_t *)&length, 1);
   REST.set_response_payload(response, buffer, length);
+}
+
+
+void
+reed_periodic_handler(resource_t *r)
+{
+  static uint16_t obs_counter = 0;
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+
+  uint8_t new_reed_state;
+  P4SEL  |= 0x02;
+  P4REN |= 0x02;
+  new_reed_state = P4IN & 0x02;
+
+  PRINTF("new reed state: %u\n",new_reed_state);
+  if(new_reed_state != reed_state){
+    leds_toggle(LEDS_RED);
+    reed_state=new_reed_state;
+
+    if(reed_state) {
+      length = sprintf(message, "Reed sensor closed");
+    } else{// if( reed_state == 1 ) {
+      length = sprintf(message, "Reed sensor opened");
+    } 
+    /* Build notification. */
+    coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
+    coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
+    coap_set_payload(notification, message, length);
+    /* Notify the registered observers with the given message type, observe option, and payload. */
+    REST.notify_subscribers(r, obs_counter, notification, obs_counter); // Conditional observe
+
+  }
+
+
+}
+#endif
+
+#if REST_RES_ZIG002
+static uint16_t previous_light;
+
+PERIODIC_RESOURCE(zig002, METHOD_GET , "digital/zig002_light", "Usage=\"..\";obs",2*CLOCK_SECOND);
+void zig002_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+  static uint16_t light;
+
+  light_ziglet_init();
+  light = light_ziglet_read();
+  length = sprintf(message, "Light: %u lux\n", light);
+  previous_light = light;
+
+  if(length>=0) {
+    memcpy(buffer, message, length);
+  }
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
+  REST.set_header_etag(response, (uint8_t *)&length, 1);
+  REST.set_response_payload(response, buffer, length);
+}
+void
+zig002_periodic_handler(resource_t *r)
+{
+  static uint16_t obs_counter = 0;
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+  static uint16_t light;
+
+  light_ziglet_init();
+  light = light_ziglet_read();
+
+  ++obs_counter;
+  
+  if((light - previous_light > 50 && light - previous_light <10000) || (previous_light - light > 50 && previous_light - light < 10000)) { //change in light by LIGHTCHANGE lux
+    PRINTF("TICK %u for /%s\n", obs_counter, r->url);
+    length = sprintf(message, "Light: %u lux\n", light);
+    previous_light = light;
+
+
+    /* Build notification. */
+    coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
+    coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
+    coap_set_payload(notification, message, length);
+    /* Notify the registered observers with the given message type, observe option, and payload. */
+    REST.notify_subscribers(r, obs_counter, notification, obs_counter); // Conditional observe
+
+  }
+
 }
 #endif // REST_RES_ZIG002
 
@@ -412,50 +509,31 @@ void ph_flexiforce_handler(void* request, void* response, uint8_t *buffer, uint1
 #endif // REST_RES_PH_FLEXIFORCE
 
 #if REST_RES_PH_MOTION
-// CODE NOG NIET IN ORDE !!!
-#define TIMER_INTERVAL            CLOCK_SECOND / 10
 
-RESOURCE(ph_motion, METHOD_GET , "phidget/motion_sensor", "Usage=\"..\"");
+static int consecutive_motions = 0;
+
+static int MOTION_INTERVAL=10; //Number of times the motion sensor gets polled (Hz)
+
+// Calibratie voor mote '055' op netstroom
+const int PH_5V_NO_MOTION_MIN_VALUE = 2010;
+const int PH_5V_NO_MOTION_MAX_VALUE = 2120;
+const int PH_3V_NO_MOTION_MIN_VALUE = 3330;
+const int PH_3V_NO_MOTION_MAX_VALUE = 3530;
+const int MAX_MOTIONS = 13; // maximaal aantal opeenvolgende bewegingsdetecties
+int motion_memory = 0; 
+const int HASMOVED = 0; 
+
+PERIODIC_RESOURCE(ph_motion, METHOD_GET , "phidget/motion_sensor", "Usage=\"..\"",CLOCK_SECOND/10);
+
 void ph_motion_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
-  // Calibratie voor mote '055' op netstroom
-  const int PH_5V_NO_MOTION_MIN_VALUE = 2010;
-  const int PH_5V_NO_MOTION_MAX_VALUE = 2120;
-  const int PH_3V_NO_MOTION_MIN_VALUE = 3330;
-  const int PH_3V_NO_MOTION_MAX_VALUE = 3530;
-
   char message[REST_MAX_CHUNK_SIZE];
   int length;
 
-  static struct etimer et;
-  static int loops = 20; // 2 seconden testen
-  static int consecutive_motions = 0;
-  const int MAX_MOTIONS = 13; // maximaal aantal opeenvolgende bewegingsdetecties
-
-  SENSORS_ACTIVATE(phidgets);
-
-  while (loops > 0 && consecutive_motions < MAX_MOTIONS) {
-    int i=0;
-    while(i<100) {
-      i++;
-    }
-
-    int phidget5V = phidgets.value(PHIDGET5V_1);
-    int phidget3V = phidgets.value(PHIDGET3V_2);
-
-    if( (phidget5V > PH_5V_NO_MOTION_MIN_VALUE && phidget5V < PH_5V_NO_MOTION_MAX_VALUE) ||
-        (phidget3V > PH_3V_NO_MOTION_MIN_VALUE && phidget3V < PH_3V_NO_MOTION_MAX_VALUE)  ) {
-      consecutive_motions = 0; // resetten
-    } else {
-      consecutive_motions++;
-    }
-    loops--;
-  }
-
-  if(consecutive_motions < MAX_MOTIONS) {
-    length = sprintf(message, "Geen beweging waargenomen");
+  if(motion_memory==0) {
+    length = sprintf(message, "No movement detected in last 5 seconds");
   } else {
-    length = sprintf(message, "Beweging waargenomen");
+    length = sprintf(message, "Movement detected %u seconds ago",5-motion_memory/10);
   }
 
   if(length>=0) {
@@ -465,6 +543,53 @@ void ph_motion_handler(void* request, void* response, uint8_t *buffer, uint16_t 
   REST.set_header_etag(response, (uint8_t *)&length, 1);
   REST.set_response_payload(response, buffer, length);
 }
+void ph_motion_periodic_handler(resource_t *r)
+{
+  static uint16_t obs_counter = 0;
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+  static char content[11];
+
+  ++obs_counter;
+
+  SENSORS_ACTIVATE(phidgets);
+
+
+
+  int phidget5V = phidgets.value(PHIDGET5V_1);
+  int phidget3V = phidgets.value(PHIDGET3V_2);
+
+  if( (phidget5V > PH_5V_NO_MOTION_MIN_VALUE && phidget5V < PH_5V_NO_MOTION_MAX_VALUE) ||
+      (phidget3V > PH_3V_NO_MOTION_MIN_VALUE && phidget3V < PH_3V_NO_MOTION_MAX_VALUE)  ) {
+  	consecutive_motions = 0; // resetten
+  } else {
+  	consecutive_motions++;
+  }
+  if(motion_memory>0){
+    motion_memory--;
+  }
+
+  if(consecutive_motions >= MAX_MOTIONS) {
+    consecutive_motions = 0; // resetten
+    motion_memory = 5*MOTION_INTERVAL; //number of seconds motion has to be remembered * MOTION_INTERVAL
+    length = sprintf(message, "Movement!");
+    leds_toggle(LEDS_BLUE);
+    memcpy(content, message, length);
+  
+//  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
+//  REST.set_header_etag(response, (uint8_t *)&length, 1);
+//  REST.set_response_payload(response, buffer, length);
+
+    /* Build notification. */
+    coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
+    coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
+    coap_set_payload(notification, content, length);
+
+    /* Notify the registered observers with the given message type, observe option, and payload. */
+    REST.notify_subscribers(r, obs_counter, notification, obs_counter); // Conditional observe
+  }
+}
+
 #endif // REST_RES_PH_MOTION
 
 #if REST_RES_RFID
@@ -1421,7 +1546,7 @@ PROCESS_THREAD(rest_server_example, ev, data)
   rest_activate_resource(&resource_zig001);
 #endif
 #if REST_RES_ZIG002
-  rest_activate_resource(&resource_zig002);
+  rest_activate_periodic_resource(&periodic_resource_zig002);
 #endif
 #if REST_RES_PH_TOUCH
   rest_activate_resource(&resource_ph_touch);
@@ -1433,11 +1558,26 @@ PROCESS_THREAD(rest_server_example, ev, data)
   rest_activate_resource(&resource_ph_flexiforce);
 #endif
 #if REST_RES_PH_MOTION
-  rest_activate_resource(&resource_ph_motion);
+  rest_activate_periodic_resource(&periodic_resource_ph_motion);
 #endif
 #if REST_RES_RFID
   event_rfid_read = process_alloc_event();
   rest_activate_event_resource(&resource_rfid);
+
+  PRINTF("activating rfid reader, changing baud rate\n");
+  uart0_init((MSP430_CPU_SPEED)/(BAUDRATE));
+  P4SEL &= ~0x04; // Clear to make it a GPIO (p4.2)
+  P4DIR |= 0x04;
+  //P4OUT |= 0x04; // disable rfid reader
+  P4OUT &= ~0x04; //enable rfid reader
+  uart0_set_input(uart_rx_callback); 
+#endif
+#if REST_RES_REED
+  PRINTF("activating reed sensor\n");
+  // Configure as input, enable pull-ups
+  P4SEL  |= 0x02;
+  P4REN |= 0x02;
+  rest_activate_periodic_resource(&periodic_resource_reed);
 #endif
 #if REST_RES_TEMP_CONDOBS
   rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
