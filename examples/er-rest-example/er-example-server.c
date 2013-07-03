@@ -276,10 +276,10 @@ void reed_handler(void* request, void* response, uint8_t *buffer, uint16_t prefe
   char message[REST_MAX_CHUNK_SIZE];
   int length;
 
-  reed_state = P4IN & 0x02;
+  reed_state = P4IN ;//& 0x01;
 
   PRINTF("reed state: %u\n",reed_state);
-  if(reed_state) {
+  if(reed_state==112) {
     length = sprintf(message, "Reed sensor opened");
   } else {
     length = sprintf(message, "Reed sensor closed");
@@ -304,14 +304,14 @@ reed_periodic_handler(resource_t *r)
   uint8_t new_reed_state;
   P4SEL  |= 0x02;
   P4REN |= 0x02;
-  new_reed_state = P4IN & 0x02;
+  new_reed_state = P4IN;// & 0x02;
 
   PRINTF("new reed state: %u\n",new_reed_state);
   if(new_reed_state != reed_state){
     leds_toggle(LEDS_RED);
     reed_state=new_reed_state;
 
-    if(reed_state) {
+    if(reed_state==116) {
       length = sprintf(message, "Reed sensor closed");
     } else{// if( reed_state == 1 ) {
       length = sprintf(message, "Reed sensor opened");
