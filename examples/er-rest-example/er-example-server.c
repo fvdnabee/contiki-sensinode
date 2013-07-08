@@ -56,7 +56,7 @@
 #define REST_RES_MIRROR           0 /* causes largest code size */
 #define REST_RES_CHUNKS           0
 #define REST_RES_SEPARATE         0
-#define REST_RES_PUSHING          0
+#define REST_RES_PUSHING          1
 #define REST_RES_EVENT            0
 #define REST_RES_SUB              0
 #define REST_RES_LEDS             0
@@ -72,8 +72,9 @@
 #define REST_RES_PH_SONAR         0
 #define REST_RES_PH_FLEXIFORCE    0
 #define REST_RES_PH_MOTION        0
-#define REST_RES_RFID			        0
-#define REST_RES_TEMP_CONDOBS	    1
+#define REST_RES_RFID			    0
+#define REST_RES_TEMP_CONDOBS		1
+#define REST_RES_OBS_DIR			1
 
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
@@ -539,12 +540,12 @@ rfid_event_handler(resource_t *r)
 #endif // REST_RES_RFID
 
 /******************************************************************************/
-#if REST_RES_HELLO
+#if REST_RES_OBS_DIR
 /*
  * Resources are defined by the RESOURCE macro.
  * Signature: resource name, the RESTful methods it handles, and its URI path (omitting the leading slash).
  */
-RESOURCE(helloworld, METHOD_GET, "hello", "title=\"Hello world: ?len=0..\";rt=\"Text\"");
+RESOURCE(observerdir, METHOD_GET, "observerdir", "title=\"ObserverDir\";ct=40");
 
 /*
  * A handler function named [resource name]_handler must be implemented for each RESOURCE.
@@ -553,26 +554,48 @@ RESOURCE(helloworld, METHOD_GET, "hello", "title=\"Hello world: ?len=0..\";rt=\"
  * If a smaller block size is requested for CoAP, the REST framework automatically splits the data.
  */
 void
-helloworld_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+observerdir_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
-  const char *len = NULL;
-  /* Some data that has the length up to REST_MAX_CHUNK_SIZE. For more, see the chunk resource. */
-  char const * const message = "Hello World! ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxy";
-  int length = 12; /*           |<-------->| */
+	
+	const char *query = NULL; 
+	char * value = NULL;
+	uint8_t length, name_len, len = 0;
+	const char *action[2] = {"clear", "list"};
+	char const *resource ="/observerdir";
 
-  /* The query string can be retrieved by rest_get_query() or parsed for its key-value pairs. */
-  if (REST.get_query_variable(request, "len", &len)) {
-    length = atoi(len);
-    if (length<0) length = 0;
-    if (length>REST_MAX_CHUNK_SIZE) length = REST_MAX_CHUNK_SIZE;
-    memcpy(buffer, message, length);
-  } else {
-    memcpy(buffer, message, length);
-  }
+	len = coap_get_header_uri_query(request, &query);
 
-  REST.set_header_content_type(response, REST.type.TEXT_PLAIN); /* text/plain is the default, hence this option could be omitted. */
-  REST.set_header_etag(response, (uint8_t *) &length, 1);
-  REST.set_response_payload(response, buffer, length);
+	if (len)
+	{
+		value = strchr(query, '=');
+		value[0] = '\0';
+
+		value++;
+
+		len -= strlen(query) + 1;
+
+		value[len] = '\0';
+		printf("Filter <%s> = <%*s>\n", query, len, value);	
+	}
+
+	if(strcmp(query, "action") == 0) 
+	{
+		if (strcmp(value, action[0]) == 0) 
+		{
+			coap_reset_observations();
+		}
+		else if (strcmp(value, action[1]) == 0)
+		{
+			length = coap_list_observations(resource, response, buffer, preferred_size, offset);
+
+			//memcpy(buffer, message, length);
+		
+		} 
+	}
+
+//	REST.set_header_content_type(response, REST.type.APPLICATION_LINK_FORMAT); /* payload in Link Format. */
+//	REST.set_header_etag(response, (uint8_t *) &length, 1);
+	//REST.set_response_payload(response, buffer, length);
 }
 #endif
 
@@ -936,7 +959,7 @@ pushing_periodic_handler(resource_t *r)
   coap_set_payload(notification, content, snprintf(content, sizeof(content), "TICK %u", obs_counter));
 
   /* Notify the registered observers with the given message type, observe option, and payload. */
-  REST.notify_subscribers(r, obs_counter, notification, obs_counter); 
+  REST.notify_subscribers(r, obs_counter, notification); 
 }
 #endif
 
@@ -1015,9 +1038,11 @@ temp_periodic_handler(resource_t *r)
   ++obs_counter;
 
   /* Notify the registered observers with the given message type, observe option, and payload. */
-  REST.notify_subscribers(r, obs_counter, notification, tmp);
+  REST.notify_subscribers(r, obs_counter, notification);
 }
 #endif /*if rest temp CONDOBS*/
+
+/******************************************************************************/
 
 /******************************************************************************/
 #if REST_RES_EVENT && defined (PLATFORM_HAS_BUTTON)
@@ -1387,9 +1412,12 @@ PROCESS_THREAD(rest_server_example, ev, data)
 #if REST_RES_TEMP_CONDOBS
   rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
 #endif
+#if REST_RES_OBS_DIR										
+//	rest_activate_periodic_resource(&resource_observedir);	//Observers Directory
+#endif
 
-#if REST_RES_HELLO
-  rest_activate_resource(&resource_helloworld);
+#if REST_RES_OBS_DIR
+  rest_activate_resource(&resource_observerdir);
 #endif
 #if REST_RES_MIRROR
   rest_activate_resource(&resource_mirror);

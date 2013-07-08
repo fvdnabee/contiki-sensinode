@@ -96,7 +96,7 @@ static struct etimer et;
 /* Example URIs that can be queried. */
 #define NUMBER_OF_URLS 4
 /* leading and ending slashes only for demo purposes, get cropped automatically when setting the Uri-Path */
-char* service_urls[NUMBER_OF_URLS] = {".well-known/core", "/sensors/temp", "battery/", "error/in//path"};
+char* service_urls[NUMBER_OF_URLS] = {".well-known/core", "/sensors/temp", "observerdir", "error/in//path"};
 #if PLATFORM_HAS_BUTTON
 #endif
 
@@ -146,7 +146,7 @@ PROCESS_THREAD(coap_client_example, ev, data)
 	PRINTF(" : %u\n", UIP_HTONS(REMOTE_PORT));
 
 	cond.cond_type = CONDITION_ALLVALUES_GREATER;
-	cond.reliability_flag = CON;
+	cond.reliability_flag = NON;
 	cond.value_type = INTEGER;
 	cond.value = 22;
 
@@ -156,7 +156,7 @@ PROCESS_THREAD(coap_client_example, ev, data)
 	coap_set_header_observe(request, 1);
   COAP_BLOCKING_REQUEST(&server_ipaddr, REMOTE_PORT, request, client_chunk_handler);
 
-  PRINTF("\n--Done--\n");
+  printf("\n--Done--\n");
 
   PROCESS_END();
 }
