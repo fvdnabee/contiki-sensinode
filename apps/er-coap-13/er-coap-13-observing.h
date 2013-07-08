@@ -76,13 +76,13 @@ typedef enum {
 typedef enum {
   CON = 0,
   NON = 1
-} cond_reliability_t;
+} cond_reliability;
 
 typedef struct {
   uint8_t cond_type;
   uint8_t reliability_flag;
   uint8_t value_type;
-  uint32_t value;
+  uint8_t value;
 } coap_condition_t;
 
 typedef struct coap_observer {
@@ -95,7 +95,6 @@ typedef struct coap_observer {
   uint8_t token[COAP_TOKEN_LEN];
   uint16_t last_mid;
   struct stimer refresh_timer;
-
 
   /* Conditional observe */
   coap_condition_t condition; 

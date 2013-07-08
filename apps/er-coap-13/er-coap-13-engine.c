@@ -66,7 +66,7 @@
 #endif
 
 /* Conditional observe */
-static int observe_packets = 0;
+static int condition_packets = 0;
 static int ack_packets = 0;
 
 PROCESS(coap_receiver, "CoAP Receiver");
@@ -107,13 +107,17 @@ coap_receive(void)
       /*TODO duplicates suppression, if required by application */
 
       PRINTF("  Parsed: v %u, t %u, tkl %u, c %u, mid %u\n", message->version, message->type, message->token_len, message->code, message->mid);
-      PRINTF("  URL: %*s\n", message->uri_path_len, message->uri_path);
-      PRINTF("  Payload: %*s\n", message->payload_len, message->payload);
+      PRINTF("  URL: %.*s\n", message->uri_path_len, message->uri_path);
+      PRINTF("  Payload: %.*s\n", message->payload_len, message->payload);
 
       /* Conditional observe */
       if(message->observe > 0) observe_packets++;
       if(message->type == COAP_TYPE_ACK) ack_packets++;
+<<<<<<< HEAD
       PRINTF("Observe=%s \tPackets=%d Ack=%d\n", message->payload, observe_packets, ack_packets);
+=======
+      PRINTF("Condition=%d \tPackets=%d Ack=%d\n", message->condition, condition_packets, ack_packets);
+>>>>>>> 665622408a6e58b3803dda0c7bcd4ddc408be4e3
 
       /* Handle requests. */
       if (message->code >= COAP_GET && message->code <= COAP_DELETE)
@@ -163,7 +167,7 @@ coap_receive(void)
                 /* Apply blockwise transfers. */
                 if ( IS_OPTION(message, COAP_OPTION_BLOCK1) && response->code<BAD_REQUEST_4_00 && !IS_OPTION(response, COAP_OPTION_BLOCK1) )
                 {
-       //           PRINTF("Block1 NOT IMPLEMENTED\n");
+                  PRINTF("Block1 NOT IMPLEMENTED\n");
 
                   coap_error_code = NOT_IMPLEMENTED_5_01;
                   coap_error_message = "NoBlock1Support";
@@ -240,15 +244,6 @@ coap_receive(void)
           /* Cancel possible subscriptions. */
           coap_remove_observer_by_mid(&UIP_IP_BUF->srcipaddr, UIP_UDP_BUF->srcport, message->mid);
         }
-        else if (message->type==COAP_TYPE_CON) /*Conditional Observe: If response was sent as CON, it should be ACKed */
-        {
-            coap_packet_t ack[1];
-            /* ACK with empty code (0) */
-            coap_init_message(ack, COAP_TYPE_ACK, 0, message->mid);
-            /* Serializing into IPBUF: Only overwrites header parts that are already parsed into the request struct. */
-            coap_send_message(&UIP_IP_BUF->srcipaddr, UIP_UDP_BUF->srcport, (uip_appdata), coap_serialize_message(ack, uip_appdata));
-        }
-
 
         if ( (transaction = coap_get_transaction_by_mid(message->mid)) )
         {
@@ -345,7 +340,7 @@ well_known_core_handler(void* request, void* response, uint8_t *buffer, uint16_t
       ++value;
       len -= strlen(filter)+1;
 
-      PRINTF("Filter %s = %*s\n", filter, len, value);
+      PRINTF("Filter %s = %.*s\n", filter, len, value);
 
       if (strcmp(filter,"href")==0 && value[0]=='/')
       {
@@ -474,7 +469,7 @@ well_known_core_handler(void* request, void* response, uint8_t *buffer, uint16_t
     }
 
     if (bufpos>0) {
-      PRINTF("BUF %d: %*s\n", bufpos, bufpos, (char *) buffer);
+      PRINTF("BUF %d: %.*s\n", bufpos, bufpos, (char *) buffer);
 
       coap_set_payload(response, buffer, bufpos );
       coap_set_header_content_type(response, APPLICATION_LINK_FORMAT);
