@@ -931,6 +931,7 @@ coap_get_header_uri_query(void *packet, const char **query)
   if (!IS_OPTION(coap_pkt, COAP_OPTION_URI_QUERY)) return 0;
 
   *query = coap_pkt->uri_query;
+printf("query: %s\n", *query);
   return coap_pkt->uri_query_len;
 }
 
@@ -1138,7 +1139,7 @@ coap_set_payload(void *packet, const void *payload, size_t length)
 {
   coap_packet_t *const coap_pkt = (coap_packet_t *) packet;
 
-  //PRINTF("setting payload (%u/%u)\n", length, REST_MAX_CHUNK_SIZE);
+  PRINTF("setting payload (%u/%u)\n", length, REST_MAX_CHUNK_SIZE);
 
   coap_pkt->payload = (uint8_t *) payload;
   coap_pkt->payload_len = MIN(REST_MAX_CHUNK_SIZE, length);

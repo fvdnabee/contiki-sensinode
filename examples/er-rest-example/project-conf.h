@@ -63,10 +63,6 @@
 #define COAP_MAX_OPEN_TRANSACTIONS   4
 
 /* Must be <= open transaction number, default is COAP_MAX_OPEN_TRANSACTIONS-1. */
-/*
-#undef COAP_MAX_OBSERVERS
-#define COAP_MAX_OBSERVERS      2
-*/
 
 /* Filtering can be disabled to save space. */
 /*

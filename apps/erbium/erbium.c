@@ -156,6 +156,7 @@ rest_invoke_restful_service(void* request, void* response, uint8_t *buffer, uint
 
   for (resource = (resource_t*)list_head(restful_services); resource; resource = resource->next)
   {
+
     /*if the web service handles that kind of requests and urls matches*/
     if ((REST.get_url(request, &url)==strlen(resource->url) || (REST.get_url(request, &url)>strlen(resource->url) && (resource->flags & HAS_SUB_RESOURCES)))
         && strncmp(resource->url, url, strlen(resource->url)) == 0)
@@ -163,7 +164,7 @@ rest_invoke_restful_service(void* request, void* response, uint8_t *buffer, uint
       found = 1;
       rest_resource_flags_t method = REST.get_method_type(request);
 
-      PRINTF("method %u, resource->flags %u\n", (uint16_t)method, resource->flags);
+      PRINTF("method %u, resource->flags resource->url%s\n", (uint16_t)method, resource->flags, resource->url);
 
       if (resource->flags & method)
       {

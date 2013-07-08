@@ -66,7 +66,7 @@
 #endif
 
 /* Conditional observe */
-static int condition_packets = 0;
+static int observe_packets = 0;
 static int ack_packets = 0;
 
 PROCESS(coap_receiver, "CoAP Receiver");
@@ -111,9 +111,9 @@ coap_receive(void)
       PRINTF("  Payload: %*s\n", message->payload_len, message->payload);
 
       /* Conditional observe */
-      if(message->observe > 0) condition_packets++;
+      if(message->observe > 0) observe_packets++;
       if(message->type == COAP_TYPE_ACK) ack_packets++;
-      PRINTF("Condition=%s \tPackets=%d Ack=%d\n", message->payload, condition_packets, ack_packets);
+      PRINTF("Observe=%s \tPackets=%d Ack=%d\n", message->payload, observe_packets, ack_packets);
 
       /* Handle requests. */
       if (message->code >= COAP_GET && message->code <= COAP_DELETE)
@@ -147,7 +147,7 @@ coap_receive(void)
           /* get offset for blockwise transfers */
           if (coap_get_header_block2(message, &block_num, NULL, &block_size, &block_offset))
           {
-     //         PRINTF("Blockwise: block request %lu (%u/%u) @ %lu bytes\n", block_num, block_size, REST_MAX_CHUNK_SIZE, block_offset);
+              PRINTF("Blockwise: block request %lu (%u/%u) @ %lu bytes\n", block_num, block_size, REST_MAX_CHUNK_SIZE, block_offset);
               block_size = MIN(block_size, REST_MAX_CHUNK_SIZE);
               new_offset = block_offset;
           }

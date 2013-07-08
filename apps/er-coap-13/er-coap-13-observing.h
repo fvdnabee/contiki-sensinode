@@ -54,7 +54,6 @@
 #endif
 
 /* Conditional observe */
-#define MAX_CONDITIONS 2
 typedef enum {
   CONDITION_CANCELLATION = 0,
   CONDITION_TIME_SERIES = 1,
@@ -97,6 +96,7 @@ typedef struct coap_observer {
   uint16_t last_mid;
   struct stimer refresh_timer;
 
+
   /* Conditional observe */
   coap_condition_t condition; 
   uint32_t      last_notification_time; 	/* Used with time-based conditions and compare max-age  */
@@ -116,8 +116,7 @@ int coap_remove_observer_by_token(uip_ipaddr_t *addr, uint16_t port, uint8_t *to
 int coap_remove_observer_by_url(uip_ipaddr_t *addr, uint16_t port, const char *url);
 int coap_remove_observer_by_mid(uip_ipaddr_t *addr, uint16_t port, uint16_t mid);
 
-void coap_notify_observers(resource_t *resource, uint16_t obs_counter, void *notification, uint32_t cond); // Conditional observe
-
+void coap_notify_observers(resource_t *resource, uint16_t obs_counter, void *notification); //Conditional observe
 void coap_observe_handler(resource_t *resource, void *request, void *response);
 
 /* Conditional observe */
@@ -129,4 +128,6 @@ int satisfies_condition(coap_observer_t *obs, uint32_t cond_value);
 int coap_set_header_condition(void *packet, uint8_t *condition, uint8_t condition_len);
 int coap_get_header_condition(void *packet, uint8_t **condition);
 
+int coap_reset_observations();
+int coap_list_observations(char *res_url, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset);
 #endif /* COAP_OBSERVING_H_ */

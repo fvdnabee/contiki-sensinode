@@ -189,16 +189,22 @@ coap_remove_observer_by_mid(uip_ipaddr_t *addr, uint16_t port, uint16_t mid)
 }
 /*-----------------------------------------------------------------------------------*/
 void
-coap_notify_observers(resource_t *resource, uint16_t obs_counter, void *notification, uint32_t cond_value) // Conditional observe
+coap_notify_observers(resource_t *resource, uint16_t obs_counter, void *notification) // Conditional observe
 {
 	coap_packet_t *const coap_res = (coap_packet_t *) notification;
 
 	coap_observer_t* obs = NULL;
 
 	uint8_t preferred_type = coap_res->type;
+
+	const uint8_t *value;
+
+	coap_get_payload(coap_res, &value);
+
+	uint32_t cond_value = atoi(value);
 	
-	PRINTF("Observing: Notification from %s\n", resource->url);
-	
+	PRINTF("Observing: Notification from %s value: <%s>\n", resource->url, value);
+
 	/* Iterate over observers. */
 	for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
 	{
@@ -210,13 +216,13 @@ coap_notify_observers(resource_t *resource, uint16_t obs_counter, void *notifica
 			{
 				if (!satisfies_condition(obs, cond_value))
 				{
-					PRINTF("Condition not satisfied. Skipping this observer\n");
+					printf("Condition not satisfied. Skipping this observer\n");
 					continue;
 				} 
 				else 
 				{
   			  preferred_type = obs->condition.reliability_flag;
-					PRINTF("Condition Satisfied. Sending Notification...\n");
+					printf("Condition Satisfied. Sending Notification...\n");
 				}
 			}
 			else 											/* Normal Observe */
@@ -540,4 +546,281 @@ coap_get_header_condition(void *packet, uint8_t **condition)
 }
 
 //---------------------------------------------------------------------------------------------------------------
+int 
+coap_reset_observations() 
+{
+	coap_observer_t* obs = NULL, *nxt=NULL;
 
+	PRINTF("Resetting all Observation Relationships...\n");
+
+	for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
+	{
+			nxt = obs->next;
+			coap_remove_observer(obs);
+			obs->next = nxt;
+	}
+	return 1;
+}
+/*----------------------------------------------------------------------------------------------*/
+int 
+coap_list_observations(char *res_url, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset) 
+{
+	size_t strpos = 0; /* position in overall string (which is larger than the buffer) */
+	size_t bufpos = 0; /* position within buffer (bytes written) */
+	size_t tmplen = 0;
+	coap_observer_t* obs = NULL;
+
+	static char tmpval[42];
+	uip_ipaddr_t *addr;
+
+	for (obs = (coap_observer_t*)list_head(observers_list); obs; obs = obs->next)
+	{
+      if (strpos>0)
+      {
+        if (strpos >= *offset && bufpos < preferred_size)
+        {
+          buffer[bufpos++] = '\n';
+        }
+        ++strpos;
+      }
+      if (strpos >= *offset && bufpos < preferred_size)
+      {
+        buffer[bufpos++] = '<';
+      }
+      ++strpos;
+
+			if (strpos >= *offset && bufpos < preferred_size)
+      {
+        buffer[bufpos++] = '/';
+      }
+      ++strpos;
+
+			/* add the resource being observed to the buffer*/
+      tmplen = strlen(obs->url);
+      if (strpos+tmplen > *offset)
+      {
+        bufpos += snprintf((char *) buffer + bufpos, preferred_size - bufpos + 1,
+                         "%s", obs->url + ((*offset-(int32_t)strpos > 0) ? (*offset-(int32_t)strpos) : 0));
+                                                          /* minimal-net requires these casts */
+        if (bufpos >= preferred_size)
+        {
+          break;
+        }
+      }
+      strpos += tmplen;
+
+      if (strpos >= *offset && bufpos < preferred_size)
+      {
+        buffer[bufpos++] = '>';
+      }
+      ++strpos;
+
+			if (strpos >= *offset && bufpos < preferred_size)
+			{
+				buffer[bufpos++] = ';';
+      }
+      ++strpos;
+
+			/*add 'ipaddr=' */
+			strcpy(tmpval, "ipaddr=");
+
+      tmplen = strlen(tmpval);
+
+      if (strpos+tmplen-1 > *offset)
+      {
+          bufpos += snprintf((char *) buffer + bufpos, preferred_size - bufpos + 1,
+                         "%s", tmpval + (*offset-((int32_t)strpos) > 0 ? *offset-((int32_t)strpos) : 0));
+
+          if (bufpos >= preferred_size)
+          {
+            break;
+          }
+      }
+		
+			strpos +=tmplen;
+			
+			/* add ip address of observer*/
+			addr = &(obs->addr);
+
+	 			 snprintf(tmpval, 42,"[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]", 									
+								((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], 
+								((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7], 
+								((uint8_t *)addr)[8], ((uint8_t *)addr)[9], ((uint8_t *)addr)[10], ((uint8_t *)addr)[11], 
+								((uint8_t *)addr)[12], ((uint8_t *)addr)[13], ((uint8_t *)addr)[14], ((uint8_t *)addr)[15]);
+
+			tmplen = strlen(tmpval);
+
+			if (strpos+tmplen-1 > *offset)
+      {		
+          bufpos += snprintf((char *) buffer + bufpos, preferred_size - bufpos + 1,
+                         "%s", tmpval + (*offset-(int32_t)strpos > 0 ? *offset-(int32_t)strpos : 0));
+
+          if (bufpos >= preferred_size)
+          {
+            break;
+          }
+        }
+        strpos += tmplen;
+
+			/*Add condition type, and value */
+			if (obs->cond_observe_flag) 
+			{
+				if (strpos >= *offset && bufpos < preferred_size)
+        {
+          buffer[bufpos++] = ';';
+        }
+        ++strpos;
+
+				/*add Condition_Type*/
+				snprintf(tmpval, 42, "T=");
+
+				tmplen = strlen(tmpval);
+
+				if (strpos + tmplen-1 > *offset) 
+				{				
+
+					bufpos += snprintf((char *) buffer + bufpos, preferred_size - bufpos + 1,
+											"%s", ((char *) tmpval) + (*offset-(int32_t)strpos > 0 ? *offset -
+															(int32_t)strpos : 0 ));
+					if (bufpos >= preferred_size)
+					{
+						break;
+					}
+				}
+				strpos += tmplen;
+
+				snprintf(tmpval, 42, "%u", obs->condition.cond_type);
+
+				tmplen = strlen(tmpval);
+
+				if (strpos + tmplen-1 > *offset) 
+				{
+					bufpos += snprintf((char *) buffer + bufpos, preferred_size - bufpos + 1,
+											"%s", ((char *) tmpval) + (*offset-(int32_t)strpos > 0 ? *offset -
+															(int32_t)strpos : 0 ));
+					if (bufpos >= preferred_size)
+					{
+						break;
+					}
+				}
+				strpos += tmplen;
+			
+				if (strpos >= *offset && bufpos < preferred_size)
+        {
+          buffer[bufpos++] = ';';
+        }
+        ++strpos;
+
+				/* add condition value*/
+				snprintf(tmpval, 42, "V=");
+
+				tmplen = strlen(tmpval);
+
+				if (strpos + tmplen-1 > *offset) 
+				{				
+
+					bufpos += snprintf((char *) buffer + bufpos, preferred_size - bufpos + 1,
+											"%s", ((char *) tmpval) + (*offset-(int32_t)strpos > 0 ? *offset -
+															(int32_t)strpos : 0 ));
+					if (bufpos >= preferred_size)
+					{
+						break;
+					}
+				}
+				strpos += tmplen;
+
+				snprintf(tmpval, 42, "%u", obs->condition.value);
+
+				tmplen = strlen(tmpval);
+
+				if (strpos + tmplen-1 > *offset) 
+				{
+					bufpos += snprintf((char *) buffer + bufpos, preferred_size - bufpos + 1,
+											"%s", ((char *) tmpval) + (*offset-(int32_t)strpos > 0 ? *offset -
+															(int32_t)strpos : 0 ));
+					if (bufpos >= preferred_size)
+					{
+						break;
+					}
+				}
+				strpos += tmplen;
+
+				if (strpos >= *offset && bufpos < preferred_size)
+        {
+          buffer[bufpos++] = ';';
+        }
+        ++strpos;
+
+				/*add reliability flag*/
+				snprintf(tmpval, 42, "R=");
+				
+				tmplen = strlen(tmpval);
+
+				if (strpos + tmplen-1 > *offset) 
+				{
+					bufpos += snprintf((char *) buffer + bufpos, preferred_size - bufpos + 1,
+											"%s", ((char *) tmpval) + (*offset-(int32_t)strpos > 0 ? *offset -
+															(int32_t)strpos : 0 ));
+					if (bufpos >= preferred_size)
+					{
+						break;
+					}
+				}
+				strpos += tmplen;
+						 
+				if (obs->condition.reliability_flag == NON) 
+				{
+					sprintf(tmpval, "NON");
+				}
+				else 
+				{
+					sprintf(tmpval, "CON");
+				}
+				tmplen = strlen(tmpval);
+
+				if (strpos + tmplen-1 > *offset) 
+				{
+					bufpos += snprintf((char *) buffer + bufpos, preferred_size - bufpos + 1,
+											"%s", ((char *) tmpval) + (*offset-(int32_t)strpos > 0 ? *offset -
+															(int32_t)strpos : 0 ));
+					if (bufpos >= preferred_size)
+					{
+						break;
+					}
+				}
+				strpos += tmplen;				
+
+			}/*if condition */
+
+      /* buffer full, but resource not completed yet; or: do not break if resource exactly fills buffer. */
+      if (bufpos >= preferred_size && strpos-bufpos > *offset)
+      {
+        PRINTF("Obs: BREAK at %s (%p)\n", obs->url, obs);
+        break;
+      }
+    }/*for*/
+			
+		if (bufpos>=0) {
+			if (bufpos > 0) {
+	      coap_set_payload(response, buffer, bufpos );
+			}	
+      PRINTF("BUF %d: %*s\n", bufpos, bufpos, (char *) buffer);
+		  coap_set_header_content_type(response, APPLICATION_LINK_FORMAT);
+    }
+    else if (strpos>0)
+    {
+      coap_set_status_code(response, BAD_OPTION_4_02);
+      coap_set_payload(response, "BlockOutOfScope", 15);
+    }
+
+    if (obs==NULL) {
+      PRINTF("List: DONE\n");
+      *offset = -1;
+    }
+    else
+    {
+      PRINTF("res: MORE at %s (%p)\n", obs->url, obs);
+      *offset += preferred_size;
+    }
+		return 1;
+}
