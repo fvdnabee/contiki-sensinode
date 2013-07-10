@@ -129,12 +129,12 @@ int satisfies_condition(coap_observer_t *obs, uint32_t cond_value);
 int coap_set_header_condition(void *packet, uint8_t *condition, uint8_t condition_len);
 int coap_get_header_condition(void *packet, uint8_t **condition);
 
-int coap_reset_observations();
-int coap_list_observations(char *res_url, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset);
-
 #else	/* Conditional observe not supported*/
 coap_observer_t *coap_add_observer(uip_ipaddr_t *addr, uint16_t port, const uint8_t *token, size_t token_len, const char *url); 
 void coap_notify_observers(resource_t *resource, uint16_t obs_counter, void *notification);
 #endif /* CONDITION */
+
+int coap_reset_observations();
+int coap_list_observations(char *res_url, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset);
 
 #endif /* COAP_OBSERVING_H_ */

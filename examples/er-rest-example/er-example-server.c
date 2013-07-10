@@ -1037,7 +1037,7 @@ separate_finalize_handler()
 }
 #endif
 /******************************************************************************/
-#if REST_RES_OBS_DIR && defined (CONDITION)
+#if REST_RES_OBS_DIR 
 RESOURCE(observerdir, METHOD_GET, "observerdir", "title=\"ObserverDir\";ct=40");
 
 /*
@@ -1620,7 +1620,7 @@ PROCESS_THREAD(rest_server_example, ev, data)
   rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
 #endif
 
-#if REST_RES_OBS_DIR && defined (CONDITION)
+#if REST_RES_OBS_DIR 
   rest_activate_resource(&resource_observerdir);
 #endif
 

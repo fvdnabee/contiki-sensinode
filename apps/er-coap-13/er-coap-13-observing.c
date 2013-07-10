@@ -652,7 +652,7 @@ coap_get_header_condition(void *packet, uint8_t **condition)
   
 	return coap_pkt->condition_len;
 }
-
+#endif /* CONDITION */
 //---------------------------------------------------------------------------------------------------------------
 int 
 coap_reset_observations() 
@@ -769,7 +769,7 @@ coap_list_observations(char *res_url, void* response, uint8_t *buffer, uint16_t 
           }
         }
         strpos += tmplen;
-
+#ifdef CONDITION
 			/*Add condition type, and value */
 			if (obs->cond_observe_flag) 
 			{
@@ -899,7 +899,7 @@ coap_list_observations(char *res_url, void* response, uint8_t *buffer, uint16_t 
 				strpos += tmplen;				
 
 			}/*if condition */
-
+#endif
       /* buffer full, but resource not completed yet; or: do not break if resource exactly fills buffer. */
       if (bufpos >= preferred_size && strpos-bufpos > *offset)
       {
@@ -932,4 +932,4 @@ coap_list_observations(char *res_url, void* response, uint8_t *buffer, uint16_t 
     }
 		return 1;
 }
-#endif /* CONDITION */
+
