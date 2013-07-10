@@ -52,29 +52,30 @@
 #include "dev/cc2420.h"
 
 /* Define which resources to include to meet memory constraints. */
-#define REST_RES_HELLO 0
-#define REST_RES_MIRROR 0 /* causes largest code size */
-#define REST_RES_CHUNKS 0
-#define REST_RES_SEPARATE 0
-#define REST_RES_PUSHING 0
-#define REST_RES_EVENT 0
-#define REST_RES_SUB 0
-#define REST_RES_LEDS 0
-#define REST_RES_TOGGLE 1
-#define REST_RES_LIGHT 0
-#define REST_RES_BATTERY 0
-#define REST_RES_RADIO 0
+#define REST_RES_HELLO 		0
+#define REST_RES_MIRROR 	0 /* causes largest code size */
+#define REST_RES_CHUNKS 	0
+#define REST_RES_SEPARATE 	0
+#define REST_RES_PUSHING 	0
+#define REST_RES_EVENT 		0
+#define REST_RES_SUB 		0
+#define REST_RES_LEDS 		0
+#define REST_RES_TOGGLE 	0
+#define REST_RES_LIGHT 		0
+#define REST_RES_BATTERY 	0
+#define REST_RES_RADIO 		0
 
-#define REST_RES_SERVERINFO       1
+#define REST_RES_SERVERINFO       0
 #define REST_RES_ZIG001           0
 #define REST_RES_ZIG002           0
 #define REST_RES_PH_TOUCH         0
 #define REST_RES_PH_SONAR         0
 #define REST_RES_PH_FLEXIFORCE    0
 #define REST_RES_PH_MOTION        0
-#define REST_RES_RFID		  0
-#define REST_RES_TEMP_CONDOBS	  0
-#define REST_RES_REED  		  1
+#define REST_RES_RFID		  		0
+#define REST_RES_TEMP_CONDOBS	  	1
+#define REST_RES_REED  		  		1
+#define REST_RES_OBS_DIR			1
 
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
@@ -85,9 +86,8 @@
 #include "erbium.h"
 
 #if REST_RES_TEMP_CONDOBS
-#include "sys/energest.h" // Conditional observe
 /* Use data from SHT11 sensor or use stored values for temperature resource */
-#define RES_TEMP_USE_SHT11_DATA 1
+#define RES_TEMP_USE_SHT11_DATA 0
 #endif
 
 #if defined (PLATFORM_HAS_BUTTON)
@@ -321,10 +321,12 @@ reed_periodic_handler(resource_t *r)
     coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
     coap_set_payload(notification, message, length);
     /* Notify the registered observers with the given message type, observe option, and payload. */
+#ifdef CONDITION
     REST.notify_subscribers(r, obs_counter, notification, obs_counter); // Conditional observe
-
+#else
+	REST.notify_subscribers(r, obs_counter, notification);
+#endif
   }
-
 
 }
 #endif
@@ -375,8 +377,11 @@ zig002_periodic_handler(resource_t *r)
     coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
     coap_set_payload(notification, message, length);
     /* Notify the registered observers with the given message type, observe option, and payload. */
+#ifdef CONDITION
     REST.notify_subscribers(r, obs_counter, notification, obs_counter); // Conditional observe
-
+#else
+	REST.notify_subscribers(r, obs_counter, notification); // Conditional observe not supported
+#endif
   }
 
 }
@@ -586,7 +591,11 @@ void ph_motion_periodic_handler(resource_t *r)
     coap_set_payload(notification, content, length);
 
     /* Notify the registered observers with the given message type, observe option, and payload. */
+#ifdef CONDITION
     REST.notify_subscribers(r, obs_counter, notification, obs_counter); // Conditional observe
+#else
+	REST.notify_subscribers(r, obs_counter, notification); // Conditional observe not supported
+#endif
   }
 }
 
@@ -660,7 +669,12 @@ rfid_event_handler(resource_t *r)
   coap_set_payload(notification, rfidtag, sizeof(rfidtag)-1);
 
   /* Notify the registered observers with the given message type, observe option, and payload. */
+#ifdef CONDITION
   REST.notify_subscribers(r, event_counter, notification,event_counter);
+#else
+  REST.notify_subscribers(r, event_counter, notification);
+#endif
+
 
 }
 #endif // REST_RES_RFID
@@ -1022,6 +1036,55 @@ separate_finalize_handler()
   } /* if (separate_active) */
 }
 #endif
+/******************************************************************************/
+#if REST_RES_OBS_DIR && defined (CONDITION)
+RESOURCE(observerdir, METHOD_GET, "observerdir", "title=\"ObserverDir\";ct=40");
+
+/*
+ * A handler function named [resource name]_handler must be implemented for each RESOURCE.
+ * A buffer for the response payload is provided through the buffer pointer. Simple resources can ignore
+ * preferred_size and offset, but must respect the REST_MAX_CHUNK_SIZE limit for the buffer.
+ * If a smaller block size is requested for CoAP, the REST framework automatically splits the data.
+ */
+void
+observerdir_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+	
+	const char *query = NULL; 
+	char * value = NULL;
+	uint8_t len = 0;
+	const char *action[2] = {"clear", "list"};
+	char const *resource ="/observerdir";
+
+	len = coap_get_header_uri_query(request, &query);
+
+	if (len)
+	{
+		value = strchr(query, '=');
+		value[0] = '\0';
+
+		value++;
+
+		len -= strlen(query) + 1;
+
+		value[len] = '\0';
+		printf("Filter <%s> = <%*s>\n", query, len, value);	
+	}
+
+	if(strcmp(query, "action") == 0) 
+	{
+		if (strcmp(value, action[0]) == 0) 
+		{
+			coap_reset_observations();
+		}
+		else if (strcmp(value, action[1]) == 0)
+		{
+			len = coap_list_observations(resource, response, buffer, preferred_size, offset);
+
+		} 
+	}
+}
+#endif
 
 /******************************************************************************/
 #if REST_RES_PUSHING
@@ -1064,7 +1127,11 @@ pushing_periodic_handler(resource_t *r)
   coap_set_payload(notification, content, snprintf(content, sizeof(content), "TICK %u", obs_counter));
 
   /* Notify the registered observers with the given message type, observe option, and payload. */
+#ifdef CONDITION
   REST.notify_subscribers(r, obs_counter, notification, obs_counter); // Conditional observe
+#else
+  REST.notify_subscribers(r, obs_counter, notification); // Conditional observe not supported
+#endif
 }
 #endif
 
@@ -1076,28 +1143,21 @@ pushing_periodic_handler(resource_t *r)
  * It takes an additional period parameter, which defines the interval to call [name]_periodic_handler().
  * A default post_handler takes care of subscriptions by managing a list of subscribers to notify.
  */
-PERIODIC_RESOURCE(temp, METHOD_GET, "sensors/temp", "title=\"Temperature\";obs", 2*CLOCK_SECOND);
+PERIODIC_RESOURCE(temp, METHOD_GET, "sensors/temp", "title=\"Temperature\";obs", 5*CLOCK_SECOND);
 
-/*const static uint8_t data[100] = {
+#if !(RES_TEMP_USE_SHT11_DATA)
+const static uint8_t data[100] = {
 21, 23, 27, 27, 29, 21, 23, 27, 22, 25, 24, 26, 23, 25, 29, 29, 26, 27, 21, 26, 20, 22, 21, 28, 21, 24, 21, 21, 29, 22, 25, 28, 26, 22, 26, 25, 24, 29, 22, 27, 25, 27, 24, 28, 22, 23, 28, 29, 20, 21, 25, 20, 21, 26, 28, 23, 20, 20, 24, 20, 22, 24, 29, 28, 22, 25, 23, 27, 25, 26, 25, 20, 24, 29, 29, 27, 22, 27, 26, 23, 26, 21, 24, 28, 28, 23, 22, 20, 23, 26, 29, 25, 26, 28, 24, 29, 23, 22, 26, 23
 };
-*/
-#if !(RES_TEMP_USE_SHT11_DATA)
-const static uint8_t data[2008] = {
-19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 
-18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 17, 18, 17, 17, 17, 17, 17, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 17, 18, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 
-17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 18, 19, 20, 20, 20, 20, 20, 20, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 26, 26, 26, 26, 26, 25, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 25, 26, 26, 26, 26, 26, 26, 26, 26, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 
-24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 24, 24, 25, 24, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 
-24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 22, 21, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 
-21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20};
 #endif
 
 static unsigned max_age = COAP_DEFAULT_MAX_AGE;
 unsigned data_iterator = 0;
-//#ifndef CONDITION
-static uint16_t tmp_last = 0;
-static uint32_t time_last = 0;
-//		#endif
+
+#ifndef CONDITION
+static uint32_t last_notified_value = 0;
+static uint32_t last_notification_time = 0;
+#endif
 
 void
 temp_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
@@ -1116,10 +1176,10 @@ temp_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_
 #endif
 
 #ifndef CONDITION
-  tmp_last = tmp;
-  time_last = clock_seconds();
-  coap_set_header_max_age(response, max_age);
+	last_notified_value = tmp;
+	last_notification_time = clock_seconds();
 #endif
+
   snprintf(msg, sizeof(msg), "%u", tmp);
   REST.set_response_payload(response, msg, strlen(msg));
 
@@ -1133,72 +1193,45 @@ temp_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_
 void
 temp_periodic_handler(resource_t *r)
 {
-  static char content[5];
+    static char content[5];
   static uint16_t obs_counter = 0;
-  static unsigned tmp; // state of temperature resource at the moment
-  unsigned long cpu, lpm, transmit, listen;
-  static uint8_t stop = 0;
+  static uint32_t tmp; // state of temperature resource at the moment
+
 #if RES_TEMP_USE_SHT11_DATA // use sht11 sensor for temperature resource
-  i2c_disable(); //http://comments.gmane.org/gmane.os.contiki.devel/14819
-  sht11_init();
-  tmp = (unsigned) (-39.60 + 0.01 * sht11_temp());
-  PRINTF("/%s: retreived temperature value from sensor\n", r->url);
+	i2c_disable(); //http://comments.gmane.org/gmane.os.contiki.devel/14819
+ 	sht11_init();
+	tmp = (unsigned) (-39.60 + 0.01 * sht11_temp());
+	PRINTF("/%s: retreived temperature value from sensor\n", r->url);
 #else // use stored values for temperature resource
-  tmp = data[data_iterator];
-
-  data_iterator = (data_iterator + 1) ;
-  //PRINTF("/%s: retreived temperature value from data array:%u\n", r->url, data[data_iterator-1]);
-  if(!stop) PRINTF("==>from data array:val[%u] = %u\n", data_iterator-1, data[data_iterator-1]);
-
-  if(!stop) {
-    energest_flush();
-
-    cpu = energest_type_time(ENERGEST_TYPE_CPU)/RTIMER_ARCH_SECOND;
-    lpm = energest_type_time(ENERGEST_TYPE_LPM)/RTIMER_ARCH_SECOND;
-    transmit = energest_type_time(ENERGEST_TYPE_TRANSMIT)/RTIMER_ARCH_SECOND;
-    listen = energest_type_time(ENERGEST_TYPE_LISTEN)/RTIMER_ARCH_SECOND;
-
-    PRINTF("cpu = %lu lpm = %lu tx = %lu rx = %lu\n", cpu, lpm, transmit, listen);
-  }
-  if (data_iterator >= 2008) {
-    if(!stop) {
-      energest_flush();
-
-      cpu = energest_type_time(ENERGEST_TYPE_CPU);
-      lpm = energest_type_time(ENERGEST_TYPE_LPM);
-      transmit = energest_type_time(ENERGEST_TYPE_TRANSMIT);
-      listen = energest_type_time(ENERGEST_TYPE_LISTEN);
-
-      PRINTF(">>>Final: cpu = %lu lpm = %lu tx = %lu rx = %lu\n", cpu, lpm, transmit, listen);
-      stop = 1;
-      PRINTF("==>End<==\n");
-      coap_packet_t last_message[1]; /* This way the packet can be treated as pointer as usual. */
-      coap_init_message(last_message, COAP_TYPE_NON, CONTENT_2_05, 0 );
-      coap_set_payload(last_message, content, snprintf(content, sizeof(content), "%u°C", 100));
-
-      REST.notify_subscribers(r, obs_counter, last_message, tmp);
-    } /* stop */
-    return;
-  }
+	tmp = data[data_iterator++ % 100];	
+	PRINTF("==>from data array:val[%u%100] = %u\n", data_iterator-1, data[data_iterator-1]);
 #endif
 
-//#ifndef CONDITION /*For Normal Observe, check if value has changed before sending notification */ //Does this work with normal observe? 
-  if(tmp_last == tmp && ((clock_seconds() - time_last) < max_age)) {
-    return;
-  } else {
-    tmp_last = tmp;
-    time_last = clock_seconds();
-  }
-//#endif /*ifndec condition */
-  /* Build notification. */
   coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
-  coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
+
+  coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, obs_counter );
+
   coap_set_header_max_age(notification, max_age);
+
   coap_set_payload(notification, content, snprintf(content, sizeof(content), "%u", tmp));
 
-  ++obs_counter;
-  /* Notify the registered observers with the given message type, observe option, and payload. */
+  ++obs_counter; 
+
+/* Notify the registered observers with the given message type, observe option, and payload. */
+#ifdef CONDITION				/* Conditional Observe */
+
   REST.notify_subscribers(r, obs_counter, notification, tmp);
+
+#else							/* Conditional Observe not supported */
+	if  (last_notified_value != tmp  || 
+        (last_notified_value == tmp && (clock_seconds() - last_notification_time)>=notification->max_age)) 
+	{
+		REST.notify_subscribers(r, obs_counter, notification);
+
+		last_notified_value = tmp;
+		last_notification_time = clock_seconds();
+	}
+#endif
 }
 #endif /*if rest pushing*/
 
@@ -1240,7 +1273,11 @@ event_event_handler(resource_t *r)
   coap_set_payload(notification, content, snprintf(content, sizeof(content), "EVENT %u", event_counter));
 
   /* Notify the registered observers with the given message type, observe option, and payload. */
+#ifdef CONDITION
   REST.notify_subscribers(r, event_counter, notification, event_counter); // Conditional observe
+#else
+  REST.notify_subscribers(r, event_counter, notification); // Conditional observe
+#endif
 }
 #endif /* PLATFORM_HAS_BUTTON */
 
@@ -1581,6 +1618,10 @@ PROCESS_THREAD(rest_server_example, ev, data)
 #endif
 #if REST_RES_TEMP_CONDOBS
   rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
+#endif
+
+#if REST_RES_OBS_DIR && defined (CONDITION)
+  rest_activate_resource(&resource_observerdir);
 #endif
 
 #if REST_RES_HELLO

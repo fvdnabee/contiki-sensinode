@@ -118,17 +118,17 @@ PROCESS_THREAD(coap_client_example, ev, data)
   static coap_packet_t request[1]; /* This way the packet can be treated as pointer as usual. */
   SERVER_NODE(&server_ipaddr);
 
-	/* Conditional observe */
-	coap_condition_t cond;
-	uint8_t encoded_cond[COAP_MAX_CONDITION_LEN];
-	uint8_t condition_len;
-
-
   /* receives all CoAP messages */
   coap_receiver_init();
 
   static struct etimer et;
   etimer_set(&et, 1*CLOCK_SECOND);
+
+#ifdef CONDITION	/* Conditional observe */
+	coap_condition_t cond;
+	uint8_t encoded_cond[COAP_MAX_CONDITION_LEN];
+	uint8_t condition_len;
+#endif
 
   while(1) {
     PROCESS_YIELD();
@@ -140,11 +140,12 @@ PROCESS_THREAD(coap_client_example, ev, data)
   }
 
   coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);
-	coap_set_header_uri_path(request, service_urls[1]);
+  coap_set_header_uri_path(request, service_urls[1]);
 
 	PRINT6ADDR(&server_ipaddr);
 	PRINTF(" : %u\n", UIP_HTONS(REMOTE_PORT));
 
+#ifdef CONDITION
 	cond.cond_type = CONDITION_ALLVALUES_GREATER;
 	cond.reliability_flag = NON;
 	cond.value_type = INTEGER;
@@ -152,6 +153,7 @@ PROCESS_THREAD(coap_client_example, ev, data)
 
 	coap_encode_condition(&cond, encoded_cond, &condition_len);
   	coap_set_header_condition(request, encoded_cond, condition_len);
+#endif
 
 	coap_set_header_observe(request, 1);
   COAP_BLOCKING_REQUEST(&server_ipaddr, REMOTE_PORT, request, client_chunk_handler);

@@ -53,7 +53,7 @@
 #define COAP_MAX_HEADER_SIZE    70
 */
 
-
+#define CONDITION
 #undef UIP_CONF_BUFFER_SIZE
 #define UIP_CONF_BUFFER_SIZE    240
 

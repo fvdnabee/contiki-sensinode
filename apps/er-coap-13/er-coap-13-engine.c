@@ -65,9 +65,8 @@
 #define PRINTBITS(buf,len)
 #endif
 
-/* Conditional observe */
-static int condition_packets = 0;
-static int ack_packets = 0;
+static uint8_t observe_packets = 0;
+static uint8_t ack_packets = 0;
 
 PROCESS(coap_receiver, "CoAP Receiver");
 
@@ -110,14 +109,10 @@ coap_receive(void)
       PRINTF("  URL: %.*s\n", message->uri_path_len, message->uri_path);
       PRINTF("  Payload: %.*s\n", message->payload_len, message->payload);
 
-      /* Conditional observe */
       if(message->observe > 0) observe_packets++;
       if(message->type == COAP_TYPE_ACK) ack_packets++;
-<<<<<<< HEAD
-      PRINTF("Observe=%s \tPackets=%d Ack=%d\n", message->payload, observe_packets, ack_packets);
-=======
-      PRINTF("Condition=%d \tPackets=%d Ack=%d\n", message->condition, condition_packets, ack_packets);
->>>>>>> 665622408a6e58b3803dda0c7bcd4ddc408be4e3
+
+      PRINTF("Payload=%s \tPackets=%d Ack=%d\n", message->payload, observe_packets, ack_packets);
 
       /* Handle requests. */
       if (message->code >= COAP_GET && message->code <= COAP_DELETE)
@@ -244,7 +239,12 @@ coap_receive(void)
           /* Cancel possible subscriptions. */
           coap_remove_observer_by_mid(&UIP_IP_BUF->srcipaddr, UIP_UDP_BUF->srcport, message->mid);
         }
-
+		else if (message->type==COAP_TYPE_CON) /* observation notification */
+		{ 
+			coap_init_message(message, COAP_TYPE_ACK, 0, message->mid);
+      		coap_send_message(&UIP_IP_BUF->srcipaddr, UIP_UDP_BUF->srcport, uip_appdata, 
+							coap_serialize_message(message, uip_appdata));
+		}
         if ( (transaction = coap_get_transaction_by_mid(message->mid)) )
         {
           /* Free transaction memory before callback, as it may create a new transaction. */
