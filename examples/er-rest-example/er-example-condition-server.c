@@ -450,6 +450,52 @@ separate_finalize_handler()
 }
 #endif
 
+#if REST_RES_OBS_DIR
+/*
+	Observation Directory
+ */
+RESOURCE(observerdir, METHOD_GET, "observerdir", "title=\"ObserverDir\";ct=40");
+
+void
+observerdir_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+
+	const char *query = NULL;
+	char * value = NULL;
+	uint8_t len = 0;
+	const char *action[2] = {"clear", "list"};
+	char const *resource ="/observerdir";
+
+	len = coap_get_header_uri_query(request, &query);
+
+	if (len)
+	{
+		value = strchr(query, '=');
+		value[0] = '\0';
+
+		value++;
+
+		len -= strlen(query) + 1;
+
+		value[len] = '\0';
+		PRINTF("Filter <%s> = <%*s>\n", query, len, value);
+	}
+
+	if(strcmp(query, "action") == 0)
+	{
+		if (strcmp(value, action[0]) == 0)
+		{
+			coap_reset_observations();
+		}
+		else if (strcmp(value, action[1]) == 0)
+		{
+			len = coap_list_observations(resource, response, buffer, preferred_size, offset);
+
+		}
+	}
+}
+#endif
+
 /******************************************************************************/
 #if REST_RES_PUSHING
 /*
@@ -570,8 +616,9 @@ temp_periodic_handler(resource_t *r)
 	tmp = (unsigned) (-39.60 + 0.01 * sht11_temp());
 	PRINTF("/%s: retreived temperature value from sensor\n", r->url);
 #else // use stored values for temperature resource
-	tmp = data[data_iterator++ % 100];	
-	PRINTF("==>from data array:val[%u] = %u\n", data_iterator-1, data[data_iterator-1]);
+	tmp = data[data_iterator % 100];
+	PRINTF("==>from data array:val[%u] = %u\n", data_iterator % 100, data[data_iterator % 100]);
+	data_iterator++;
 #endif
 
   coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
@@ -946,6 +993,10 @@ PROCESS_THREAD(rest_server_example, ev, data)
 
 #if REST_RES_TEMP_CONDOBS
   rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
+#endif
+
+#if REST_RES_OBS_DIR
+  rest_activate_resource(&resource_observerdir);
 #endif
 
 #if REST_RES_MIRROR

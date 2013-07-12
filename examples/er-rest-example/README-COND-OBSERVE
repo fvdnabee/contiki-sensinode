@@ -28,9 +28,18 @@ Note: You may comment the #define CONDITION statement in project-conf.h and reco
       normal observation
 ---------------------------------------------------------------------------------------------------------------
 
-Preliminaries
+Example Files
 =============
-  Make sure rpl-border-router has the same stack and fits into mote memory:
+er-example-condition-server.c - Same as er-example-server.c, but focuses on conditional observe functionality by defining a periodic resource /sensors/temp. /observerdir resourse is also added to list or reset observation relationships.
+er-example-condition-client.c - This file sends a conditional observation request to the server for the resource /sensors/temp. Therefore, the client requests to be notified if the temperature values are greater than 22. Since it is a NON request, the server will not expect an ACK.
+
+
+Running Conditional Observe Example in Cooja
+===========================================
+
+* Preliminaries
+---------------
+-  Make sure rpl-border-router has the same stack and fits into mote memory:
    You can disable RDC in border-router project-conf.h (not really required as BR keeps radio turned on).
    #undef NETSTACK_CONF_RDC
    #define NETSTACK_CONF_RDC     nullrdc_driver
@@ -46,21 +55,14 @@ Preliminaries
 
 	TMOTES
 	------
-   aaaa::0212:7401:0001:0101	cooja1
-   aaaa::0212:7402:0002:0202	cooja2
-   ...
+   	aaaa::0212:7401:0001:0101	cooja1
+   	aaaa::0212:7402:0002:0202	cooja2
+   	...
 
    $ make TARGET=z1 savetarget
 
-Example Files
-=============
-er-example-condition-server.c - Same as er-example-server.c, but focuses on conditional observe functionality by defining a periodic resource /sensors/temp. /observerdir resourse is also added to list or reset observation relationships.
-er-example-condition-client.c - This file sends a conditional observation request to the server for the resource /sensors/temp. Therefore, the client requests to be notified if the temperature values are greater than 22. Since it is a NON request, the server will not expect an ACK.
-
-How it works
-============
-* Cooja (using Z1 as cooja nodes)
----------------------------------
+* Running the simulation (using Z1 as cooja nodes)
+--------------------------------------------------
 1) Open a terminal
 2) $cd example/er-rest-example
 3) make TARGET=cooja cond-server-client-test.csc
@@ -69,8 +71,8 @@ How it works
 6) Click Start on Cooja
 
 Note: To see the output on the client, open $(CONTIKI_DIR)/apps/er-coap-13/er-coap-engine.c file using a text  
-      editor.Change the PRINTF on line 110 (PRINTF payload) to small letters (printf). Save. Reload Cooja. Run 
-      step 5 and 6 above  
+      editor.Change the PRINTF on line 110 (PRINTF payload) to small letters (printf). Save. Stop the running simulation. 
+      Reload Cooja. Run step 5 and 6 above  
 
 Observation Directory
 ======================

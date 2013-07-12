@@ -241,13 +241,13 @@ coap_notify_observers(resource_t *resource, uint16_t obs_counter, void *notifica
 			{
 				if (!satisfies_condition(obs, cond_value))
 				{
-					printf("Condition not satisfied. Skipping this observer\n");
+					PRINTF("Condition not satisfied. Skipping this observer\n");
 					continue;
 				} 
 				else 
 				{
   			  preferred_type = obs->condition.reliability_flag;
-					printf("Condition Satisfied. Sending Notification...\n");
+					PRINTF("Condition Satisfied. Sending Notification...\n");
 				}
 			}
 			else 											/* Normal Observe */
