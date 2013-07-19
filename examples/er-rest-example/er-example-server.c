@@ -70,12 +70,12 @@
 #define REST_RES_ZIG002           0
 #define REST_RES_PH_TOUCH         0
 #define REST_RES_PH_SONAR         0
-#define REST_RES_PH_FLEXIFORCE    0
+#define REST_RES_PH_FLEXIFORCE    1
 #define REST_RES_PH_MOTION        0
-#define REST_RES_RFID		  		0
-#define REST_RES_TEMP_CONDOBS	  	1
-#define REST_RES_REED  		  		1
-#define REST_RES_OBS_DIR			1
+#define REST_RES_RFID		  		    0
+#define REST_RES_TEMP_CONDOBS	  	0
+#define REST_RES_REED  		  		  0
+#define REST_RES_OBS_DIR			    0
 
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
@@ -467,28 +467,15 @@ void ph_sonar_handler(void* request, void* response, uint8_t *buffer, uint16_t p
 #endif // REST_RES_PH_SONAR
 
 #if REST_RES_PH_FLEXIFORCE
-// conversiefuncties
-#define round(x)                  ((x)>=0?(int)((x)+0.5):(int)((x)-0.5))
-#define convert_to_cm(x)          round(phidgets.value(PHIDGET3V_2) / (4095 / 1296))
-
-RESOURCE(ph_flexiforce, METHOD_GET , "phidget/flexiforce_sensor", "Usage=\"..?ph=3|5\"");
-void ph_flexiforce_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
-{
-  const int MIN_VALUE = 10;
-
-  const char *ph = NULL;
-  char message[REST_MAX_CHUNK_SIZE];
-  int length;
-
+#define FLEXIFORCE_MIN_VALUE 10
+// Reusable function that retrieves the measurement from the phidget:
+int retrieve_flexiforce_value(int type) {
   SENSORS_ACTIVATE(phidgets);
 
   int phidget5V = phidgets.value(PHIDGET5V_1);
   int phidget3V = phidgets.value(PHIDGET3V_2);
 
   int value;
-
-  REST.get_query_variable(request, "ph", &ph);
-  int type = atoi(ph);
   if(type == 3) {
       value = phidgets.value(PHIDGET3V_2);
     } else if(type == 5) {
@@ -497,11 +484,25 @@ void ph_flexiforce_handler(void* request, void* response, uint8_t *buffer, uint1
     // kleinste van de 2 zoeken
     value = (phidget5V < phidget3V ? phidget5V : phidget3V);
   }
+  return value;
+}
 
-  if (value < MIN_VALUE) {
+// This resource returns the raw value from the sensor
+RESOURCE(ph_flexiforce, METHOD_GET , "phidget/flexiforce_sensor", "Usage=\"..?ph=3|5\"");
+void ph_flexiforce_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+
+  const char *ph = NULL;
+  REST.get_query_variable(request, "ph", &ph);
+  int type = atoi(ph);
+  int value = retrieve_flexiforce_value(type);
+
+  if (value < FLEXIFORCE_MIN_VALUE) {
     length = sprintf(message, "Sensor niet ingedrukt");
   } else {
-    length = sprintf(message, "Sensor ingedrukt (als aangesloten): %d", phidget5V);
+    length = sprintf(message, "Sensor ingedrukt (als aangesloten): %d", value);
   }
 
   if(length>=0) {
@@ -510,6 +511,50 @@ void ph_flexiforce_handler(void* request, void* response, uint8_t *buffer, uint1
   REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
   REST.set_header_etag(response, (uint8_t *)&length, 1);
   REST.set_response_payload(response, buffer, length);
+}
+
+// This resource returns yes when pressure is detected and no when not, it is
+// also observable
+PERIODIC_RESOURCE(ph_flexiforce_obs, METHOD_GET, "phidget/flexiforce_sensor/status", "title=\"Pressure detected (1|0)?\";obs", 1*CLOCK_SECOND);
+void ph_flexiforce_obs_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+
+  int value = retrieve_flexiforce_value(5); // Assume 5V phidget
+  int status = (value < FLEXIFORCE_MIN_VALUE) ? 0 : 1; // C doesn't support boolean
+
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
+  REST.set_response_payload(response, (status) ? "1" : "0", 1);
+  /* A post_handler that handles subscriptions will be called for periodic resources by the REST framework. */
+}
+
+/*
+ * Additionally, a handler function named [resource name]_handler must be implemented for each PERIODIC_RESOURCE.
+ * It will be called by the REST manager process with the defined period.
+ */
+void
+ph_flexiforce_obs_periodic_handler(resource_t *r)
+{
+  static uint16_t obs_counter = 0;
+
+  ++obs_counter;
+  // Retrieve value
+  int value = retrieve_flexiforce_value(5); // Assume 5V phidget
+
+  /* Build notification. */
+  coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
+  coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
+  if (value < FLEXIFORCE_MIN_VALUE) {
+    coap_set_payload(notification, "no", 2);
+  } else {
+    coap_set_payload(notification, "yes", 3);
+  }
+
+  /* Notify the registered observers with the given message type, observe option, and payload. */
+#ifdef CONDITION
+  REST.notify_subscribers(r, obs_counter, notification,obs_counter);
+#else
+  REST.notify_subscribers(r, obs_counter, notification);
+#endif
 }
 #endif // REST_RES_PH_FLEXIFORCE
 
