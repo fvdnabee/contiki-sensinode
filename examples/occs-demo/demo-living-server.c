@@ -117,6 +117,9 @@
 #if REST_REST_RFID
 #include "dev/uart0.h"
 #endif
+#if REST_RES_LED_LIGHT1 || REST_RES_LED_LIGHT2 || REST_RES_LED_LIGHT3 || REST_RES_LED_LIGHT4
+#include "led-light-handler.h"
+#endif
 
 /* For CoAP-specific example: not required for normal RESTful Web service. */
 #if WITH_COAP == 3
@@ -151,44 +154,7 @@ RESOURCE(led_light1, METHOD_GET | METHOD_PUT | METHOD_POST, "led/light1", "title
 void
 led_light1_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
- char message[REST_MAX_CHUNK_SIZE];
- int length;
- int on;
- const uint8_t* payload=NULL;
- rest_resource_flags_t method;
- 
- P1DIR |= 0x1;
- P1SEL &= ~0x1;
- 
-// get_method_type & payload
- 
- method = REST.get_method_type(request);
- 
- if(method & METHOD_PUT){
-     P1OUT ^= 0x1;
- }else if(method & METHOD_POST){
-     REST.get_request_payload(request,&payload);
-     if(payload[0]=='o' && payload[1]=='n'){
-	P1OUT |= 0x1;
-     }else{
-	P1OUT &= ~0x1;
-     }
- }  
- on = P1OUT & 0x1;
- 
- if(on){
-   length = sprintf(message, "Led On");
- }else{
-   length = sprintf(message, "Led Off");
- }
- 
- if(length>=0) {
-   memcpy(buffer, message, length);
- }
- 
- REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
- REST.set_header_etag(response, (uint8_t *)&length, 1);
- REST.set_response_payload(response, buffer, length);
+ led_light_handler(request, response, buffer, preferred_size, offset, 0x1);
 }
 #endif
 
@@ -198,45 +164,7 @@ RESOURCE(led_light2, METHOD_GET | METHOD_PUT | METHOD_POST, "led/light2", "title
 void
 led_light2_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
- char message[REST_MAX_CHUNK_SIZE];
- int length;
- int on;
- const uint8_t* payload=NULL;
- rest_resource_flags_t method;
- 
- P1DIR |= 0x40;
- P1SEL &= ~0x40; 
- 
- // get_method_type & payload
- 
- method = REST.get_method_type(request);
- 
- if(method & METHOD_PUT){
-     P1OUT ^= 0x40;
- }else if(method & METHOD_POST){
-     REST.get_request_payload(request,&payload);
-     if(payload[0]=='o' && payload[1]=='n'){
-	P1OUT |= 0x40;
-     }else{
-	P1OUT &= ~0x40;
-     }
- }  
- 
- on = P1OUT & 0x40;
- 
- if(on){
-   length = sprintf(message, "Led On");
- }else{
-   length = sprintf(message, "Led Off");
- }
- 
- if(length>=0) {
-   memcpy(buffer, message, length);
- }
- 
- REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
- REST.set_header_etag(response, (uint8_t *)&length, 1);
- REST.set_response_payload(response, buffer, length);
+ led_light_handler(request, response, buffer, preferred_size, offset, 0x40);
 }
 #endif
 
@@ -246,50 +174,11 @@ RESOURCE(led_light3, METHOD_GET | METHOD_PUT | METHOD_POST, "led/light3", "title
 void
 led_light3_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
- char message[REST_MAX_CHUNK_SIZE];
- int length;
- int on;
- const uint8_t* payload=NULL;
- rest_resource_flags_t method;
- 
- P1DIR |= 0x80;
- P1SEL &= ~0x80; 
- 
- // get_method_type & payload
- 
- method = REST.get_method_type(request);
- 
- if(method & METHOD_PUT){
-     P1OUT ^= 0x80;
- }else if(method & METHOD_POST){
-     REST.get_request_payload(request,&payload);
-     if(payload[0]=='o' && payload[1]=='n'){
-	P1OUT |= 0x80;
-     }else{
-	P1OUT &= ~0x80;
-     }
- }  
- 
- on = P1OUT & 0x80;
- 
- if(on){
-   length = sprintf(message, "Led On");
- }else{
-   length = sprintf(message, "Led Off");
- }
- 
- if(length>=0) {
-   memcpy(buffer, message, length);
- }
- 
- REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
- REST.set_header_etag(response, (uint8_t *)&length, 1);
- REST.set_response_payload(response, buffer, length);
+ led_light_handler(request, response, buffer, preferred_size, offset, 0x80);
 }
 #endif
 
 #if REST_RES_BUZZER
-
 RESOURCE(buzzer, METHOD_GET | METHOD_POST | METHOD_PUT, "actuators/buzzer","title=\"Buzzer\";rt=\"Control\"");
 void
 buzzer_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
@@ -1853,10 +1742,10 @@ PROCESS_THREAD(rest_server_example, ev, data)
 
   /* Activate the application-specific resources. */
 #if REST_RES_LED_LIGHT1
+  // Configure P1.x to turn off LED light #1
   P1DIR |= 0xc1;
   P1SEL &= ~0xc1;
   P1OUT &= ~0xc1;
-  
   rest_activate_resource(&resource_led_light1);
 #endif
 #if REST_RES_LED_LIGHT2

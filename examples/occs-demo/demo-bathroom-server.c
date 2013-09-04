@@ -268,7 +268,7 @@ void zig001_handler(void* request, void* response, uint8_t *buffer, uint16_t pre
 #endif // REST_RES_LEDS_ZIG001
 
 #if REST_RES_REED
-static uint8_t reed_state;
+static uint8_t reed_state = 0;
 
 PERIODIC_RESOURCE(reed, METHOD_GET , "phidget/reed", "Usage=\"..\";obs",CLOCK_SECOND);
 void reed_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
@@ -276,14 +276,13 @@ void reed_handler(void* request, void* response, uint8_t *buffer, uint16_t prefe
   char message[REST_MAX_CHUNK_SIZE];
   int length;
 
-  reed_state = P4IN ;//& 0x01;
+  reed_state = P4IN & 0x04; // For example: P4IN & 0x04 -> 3rd bit will be one if sensor is closed
 
-  PRINTF("reed state: %u\n",reed_state);
-  if(reed_state==112) {
-    length = sprintf(message, "Reed sensor opened");
-  } else {
+  if(reed_state == 0x04) {
     length = sprintf(message, "Reed sensor closed");
-  } 
+  } else if(reed_state == 0) {
+    length = sprintf(message, "Reed sensor opened");
+  }
 
   if(length>=0) {
     memcpy(buffer, message, length);
@@ -293,7 +292,6 @@ void reed_handler(void* request, void* response, uint8_t *buffer, uint16_t prefe
   REST.set_response_payload(response, buffer, length);
 }
 
-
 void
 reed_periodic_handler(resource_t *r)
 {
@@ -302,31 +300,26 @@ reed_periodic_handler(resource_t *r)
   int length;
 
   uint8_t new_reed_state;
-  P4SEL  |= 0x02;
-  P4REN |= 0x02;
-  new_reed_state = P4IN;// & 0x02;
+  new_reed_state = P4IN & 0x04;
 
-  P2DIR |= 0x80;
-  P2SEL &= ~0x80;
-  P4DIR |= 0x08;
-  P4SEL &= ~0x08;
-
-  new_reed_state &= ~0x08;
-
-  PRINTF("new reed state: %u\n",new_reed_state);
   if(new_reed_state != reed_state){
-    leds_toggle(LEDS_RED);
+    PRINTF("reed_periodic_handler(): state of reed sensor has changed: %u -> %u\n",reed_state, new_reed_state);
+    leds_toggle(LEDS_RED); // toggle LED on sensor board to indicate change
     reed_state=new_reed_state;
 
-    if(reed_state==116) {
+    if(reed_state == 0x04) {
+      PRINTF("Reed sensor closed");
+      // Set green LED on, red LED off
+      P2OUT &= ~0x80;
+      P4OUT |= 0x8;
       length = sprintf(message, "Reed sensor closed");
-	P2OUT &= ~0x80;	
-  	P4OUT |= 0x8;
-    } else{// if( reed_state == 1 ) {
+    } else if(reed_state == 0) {
+      PRINTF("Reed sensor opened");
+      // Set green LED off, red LED on
+      P4OUT &= ~0x8;
+      P2OUT |= 0x80;
       length = sprintf(message, "Reed sensor opened");
-	P4OUT &= ~0x8;
-	P2OUT |= 0x80;
-    } 
+    }
     /* Build notification. */
     coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
     coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
@@ -338,7 +331,6 @@ reed_periodic_handler(resource_t *r)
 	REST.notify_subscribers(r, obs_counter, notification);
 #endif
   }
-
 }
 #endif
 
@@ -1646,9 +1638,26 @@ PROCESS_THREAD(rest_server_example, ev, data)
 #endif
 #if REST_RES_REED
   PRINTF("activating reed sensor\n");
-  // Configure as input, enable pull-ups
-  P4SEL  |= 0x02;
-  P4REN |= 0x02;
+  // Configure pins for the two status LEDs, RED LED is on P2.6, GREEN LED is on P2.5
+  // Set as GPIO pin
+  P2SEL &= ~0x80;
+  P4SEL &= ~0x08;
+  // Set as output pin
+  P2DIR |= 0x80;
+  P4DIR |= 0x08;
+  // Configure LEDS to assume that REED sensor is open when sensor starts:
+  P2OUT |= 0x80;
+  P4OUT &= ~0x08;
+
+  // Configure pin P4.2 for REED sensor
+  // Set P4.2 to GPIO pin (set 3rd bit of P4SEL to 0)
+  P4SEL &= ~0x04;
+  // Configure P4.2 as INPUT (set 3rd bit of P4DIR to 0)
+  P4DIR &= ~0x04;
+  // Enable pullup/pulldown resistor for P4.2 (set 3rd but of P4REN to 1):
+  P4REN |= 0x04;
+  // Set pullup/pulldown resistor to pull-down for P4.2 (set 3rd bit of P4OUT to 0)
+  P4OUT &= ~0x04;
   rest_activate_periodic_resource(&periodic_resource_reed);
 #endif
 #if REST_RES_TEMP_CONDOBS

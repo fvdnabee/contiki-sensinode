@@ -44,7 +44,7 @@
 
 #include "dev/leds.h"
 #include "dev/sht11.h"
-#include "dev/i2cmaster.h" 
+#include "dev/i2cmaster.h"
 #include "dev/light-ziglet.h"
 #include "dev/z1-phidgets.h"
 #include "lib/sensors.h"
@@ -52,18 +52,18 @@
 #include "dev/cc2420.h"
 
 /* Define which resources to include to meet memory constraints. */
-#define REST_RES_HELLO 		0
-#define REST_RES_MIRROR 	0 /* causes largest code size */
-#define REST_RES_CHUNKS 	0
-#define REST_RES_SEPARATE 	0
-#define REST_RES_PUSHING 	0
-#define REST_RES_EVENT 		0
-#define REST_RES_SUB 		0
-#define REST_RES_LEDS 		0
-#define REST_RES_TOGGLE 	0
-#define REST_RES_LIGHT 		0
-#define REST_RES_BATTERY 	0
-#define REST_RES_RADIO 		0
+#define REST_RES_HELLO    0
+#define REST_RES_MIRROR   0 /* causes largest code size */
+#define REST_RES_CHUNKS   0
+#define REST_RES_SEPARATE   0
+#define REST_RES_PUSHING  0
+#define REST_RES_EVENT    0
+#define REST_RES_SUB    0
+#define REST_RES_LEDS     0
+#define REST_RES_TOGGLE   0
+#define REST_RES_LIGHT    0
+#define REST_RES_BATTERY  0
+#define REST_RES_RADIO    0
 
 #define REST_RES_SERVERINFO       0
 #define REST_RES_ZIG001           0
@@ -72,15 +72,15 @@
 #define REST_RES_PH_SONAR         0
 #define REST_RES_PH_FLEXIFORCE    0
 #define REST_RES_PH_MOTION        1
-#define REST_RES_RFID		  0
-#define REST_RES_TEMP_CONDOBS	  0
-#define REST_RES_REED  		  1
-#define REST_RES_OBS_DIR	  0 
+#define REST_RES_RFID     0
+#define REST_RES_TEMP_CONDOBS   0
+#define REST_RES_REED       1
+#define REST_RES_OBS_DIR    0 
 
-#define REST_RES_LED_LIGHT1	  1
-#define REST_RES_LED_LIGHT2	  1
-#define REST_RES_LED_LIGHT3	  1
-#define REST_RES_LED_LIGHT4	  1
+#define REST_RES_LED_LIGHT1   1
+#define REST_RES_LED_LIGHT2   1
+#define REST_RES_LED_LIGHT3   1
+#define REST_RES_LED_LIGHT4   1
 
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
@@ -113,8 +113,11 @@
 #if defined (PLATFORM_HAS_RADIO)
 #include "dev/radio-sensor.h"
 #endif
-#if REST_REST_RFID
+#if REST_RES_RFID
 #include "dev/uart0.h"
+#endif
+#if REST_RES_LED_LIGHT1 || REST_RES_LED_LIGHT2 || REST_RES_LED_LIGHT3 || REST_RES_LED_LIGHT4
+#include "led-light-handler.h"
 #endif
 
 /* For CoAP-specific example: not required for normal RESTful Web service. */
@@ -143,200 +146,46 @@
 
 
 PROCESS(rest_server_example, "Erbium Example Server");
-// PIN 53
+
+// PIN 53, P1.1
 #if REST_RES_LED_LIGHT1
 RESOURCE(led_light1, METHOD_GET | METHOD_PUT | METHOD_POST, "led/light1", "title=\"Toggle led on pin 53\";rt=\"Control\"");
 void
 led_light1_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
- char message[REST_MAX_CHUNK_SIZE];
- int length;
- int on;
- uint8_t* payload=NULL;
- rest_resource_flags_t method;
- 
- P1DIR |= 0x2;
- P1SEL &= ~0x2; 
- 
- // get_method_type & payload
- 
- method = REST.get_method_type(request);
- 
- if(method & METHOD_PUT){
-     P1OUT ^= 0x2;
- }else if(method & METHOD_POST){
-     REST.get_request_payload(request,&payload);
-     if(payload[0]=='o' && payload[1]=='n'){
-	P1OUT |= 0x2;
-     }else{
-	P1OUT &= ~0x2;
-     }
- }  
- 
- 
- on = P1OUT & 0x2;
- 
- if(on){
-   length = sprintf(message, "Led On");
- }else{
-   length = sprintf(message, "Led Off");
- }
- 
- if(length>=0) {
-   memcpy(buffer, message, length);
- }
- 
- REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
- REST.set_header_etag(response, (uint8_t *)&length, 1);
- REST.set_response_payload(response, buffer, length);
+ led_light_handler(request, response, buffer, preferred_size, offset, 0x2);
 }
 #endif
 
-// PIN 54
+// PIN 54, P1.0
 #if REST_RES_LED_LIGHT2
 RESOURCE(led_light2, METHOD_GET | METHOD_PUT | METHOD_POST, "led/light2", "title=\"Toggle led on pin 54\";rt=\"Control\"");
 void
 led_light2_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
- char message[REST_MAX_CHUNK_SIZE];
- int length;
- int on;
- uint8_t* payload=NULL;
- rest_resource_flags_t method;
- 
- P1DIR |= 0x1;
- P1SEL &= ~0x1; 
- 
-  // get_method_type & payload
- 
- method = REST.get_method_type(request);
- 
- if(method & METHOD_PUT){
-     P1OUT ^= 0x1;
- }else if(method & METHOD_POST){
-     REST.get_request_payload(request,&payload);
-     if(payload[0]=='o' && payload[1]=='n'){
-	P1OUT |= 0x1;
-     }else{
-	P1OUT &= ~0x1;
-     }
- }  
- 
- on = P1OUT & 0x1;
- 
- if(on){
-   length = sprintf(message, "Led On");
- }else{
-   length = sprintf(message, "Led Off");
- }
- 
- if(length>=0) {
-   memcpy(buffer, message, length);
- }
- 
- REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
- REST.set_header_etag(response, (uint8_t *)&length, 1);
- REST.set_response_payload(response, buffer, length);
+ led_light_handler(request, response, buffer, preferred_size, offset, 0x1);
 }
 #endif
 
-// PIN 52
+// PIN 52, P1.6
 #if REST_RES_LED_LIGHT3
 RESOURCE(led_light3, METHOD_GET | METHOD_PUT | METHOD_POST, "led/light3", "title=\"Toggle led on pin 52\";rt=\"Control\"");
 void
 led_light3_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
- char message[REST_MAX_CHUNK_SIZE];
- int length;
- int on;
- uint8_t* payload=NULL;
- rest_resource_flags_t method;
- 
- P1DIR |= 0x40;
- P1SEL &= ~0x40; 
- 
- // get_method_type & payload
- 
- method = REST.get_method_type(request);
- 
- if(method & METHOD_PUT){
-     P1OUT ^= 0x40;
- }else if(method & METHOD_POST){
-     REST.get_request_payload(request,&payload);
-     if(payload[0]=='o' && payload[1]=='n'){
-	P1OUT |= 0x40;
-     }else{
-	P1OUT &= ~0x40;
-     }
- }  
- 
- 
- on = P1OUT & 0x40;
- 
- if(on){
-   length = sprintf(message, "Led On");
- }else{
-   length = sprintf(message, "Led Off");
- }
- 
- if(length>=0) {
-   memcpy(buffer, message, length);
- }
- 
- REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
- REST.set_header_etag(response, (uint8_t *)&length, 1);
- REST.set_response_payload(response, buffer, length);
+ led_light_handler(request, response, buffer, preferred_size, offset, 0x40);
 }
 #endif
 
-// PIN 50
+// PIN 50, P1.7
 #if REST_RES_LED_LIGHT4
 RESOURCE(led_light4, METHOD_GET | METHOD_PUT | METHOD_POST, "led/light4", "title=\"Toggle led on pin 50\";rt=\"Control\"");
 void
 led_light4_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
- char message[REST_MAX_CHUNK_SIZE];
- int length;
- int on;
- uint8_t* payload=NULL; 
- rest_resource_flags_t method;
- 
- P1DIR |= 0x80;
- P1SEL &= ~0x80; 
- 
-  // get_method_type & payload
- 
- method = REST.get_method_type(request);
- 
- if(method & METHOD_PUT){
-     P1OUT ^= 0x80;
- }else if(method & METHOD_POST){
-     REST.get_request_payload(request,&payload);
-     if(payload[0]=='o' && payload[1]=='n'){
-	P1OUT |= 0x80;
-     }else{
-	P1OUT &= ~0x80;
-     }
- }  
- 
- on = P1OUT & 0x80;
- 
- if(on){
-   length = sprintf(message, "Led On");
- }else{
-   length = sprintf(message, "Led Off");
- }
- 
- if(length>=0) {
-   memcpy(buffer, message, length);
- }
- 
- REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
- REST.set_header_etag(response, (uint8_t *)&length, 1);
- REST.set_response_payload(response, buffer, length);
+ led_light_handler(request, response, buffer, preferred_size, offset, 0x80);
 }
 #endif
-
 
 #if REST_RES_SERVERINFO
 /*
@@ -467,7 +316,7 @@ void zig001_handler(void* request, void* response, uint8_t *buffer, uint16_t pre
 #endif // REST_RES_LEDS_ZIG001
 
 #if REST_RES_REED
-static uint8_t reed_state;
+static uint8_t reed_state = 0;
 
 PERIODIC_RESOURCE(reed, METHOD_GET , "phidget/reed", "Usage=\"..\";obs",CLOCK_SECOND);
 void reed_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
@@ -475,14 +324,13 @@ void reed_handler(void* request, void* response, uint8_t *buffer, uint16_t prefe
   char message[REST_MAX_CHUNK_SIZE];
   int length;
 
-  reed_state = P4IN ;//& 0x01;
+  reed_state = P4IN & 0x04; // For example: P4IN & 0x04 -> 3rd bit will be one if sensor is closed
 
-  PRINTF("reed state: %u\n",reed_state);
-  if(reed_state==112) {
-    length = sprintf(message, "Reed sensor opened");
-  } else {
+  if(reed_state == 0x04) {
     length = sprintf(message, "Reed sensor closed");
-  } 
+  } else if(reed_state == 0) {
+    length = sprintf(message, "Reed sensor opened");
+  }
 
   if(length>=0) {
     memcpy(buffer, message, length);
@@ -492,7 +340,6 @@ void reed_handler(void* request, void* response, uint8_t *buffer, uint16_t prefe
   REST.set_response_payload(response, buffer, length);
 }
 
-
 void
 reed_periodic_handler(resource_t *r)
 {
@@ -501,29 +348,26 @@ reed_periodic_handler(resource_t *r)
   int length;
 
   uint8_t new_reed_state;
-  P4SEL  |= 0x02;
-  P4REN |= 0x02;
-  new_reed_state = P4IN;// & 0x02;
+  new_reed_state = P4IN & 0x04;
 
-  P2DIR |= 0x60;
-  P2SEL &= ~0x60;
-
-  new_reed_state &= ~0x08;
-
-  PRINTF("new reed state: %u\n",new_reed_state);
   if(new_reed_state != reed_state){
-    leds_toggle(LEDS_RED);
+    PRINTF("reed_periodic_handler(): state of reed sensor has changed: %u -> %u\n",reed_state, new_reed_state);
+    leds_toggle(LEDS_RED); // toggle LED on sensor board to indicate change
     reed_state=new_reed_state;
 
-    if(reed_state==116) {
+    if(reed_state == 0x04) {
+      PRINTF("Reed sensor closed");
+      // Set green LED on, red LED off
+      P2OUT &= ~0x40;
+      P2OUT |= 0x20;
       length = sprintf(message, "Reed sensor closed");
-	P2OUT &= ~0x40;	
-  	P2OUT |= 0x20;
-    } else{// if( reed_state == 1 ) {
+    } else if(reed_state == 0) {
+      PRINTF("Reed sensor opened");
+      // Set green LED off, red LED on
+      P2OUT &= ~0x20;
+      P2OUT |= 0x40;
       length = sprintf(message, "Reed sensor opened");
-	P2OUT &= ~0x20;
-	P2OUT |= 0x40;
-    } 
+    }
     /* Build notification. */
     coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
     coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
@@ -535,7 +379,6 @@ reed_periodic_handler(resource_t *r)
 	REST.notify_subscribers(r, obs_counter, notification);
 #endif
   }
-
 }
 #endif
 
@@ -740,6 +583,7 @@ void ph_flexiforce_handler(void* request, void* response, uint8_t *buffer, uint1
 #if REST_RES_PH_MOTION
 
 static int consecutive_motions = 0;
+static int ph_motion_led_pins_configured = 0;
 
 static int MOTION_INTERVAL=10; //Number of times the motion sensor gets polled (Hz)
 
@@ -749,8 +593,8 @@ const int PH_5V_NO_MOTION_MAX_VALUE = 2120;
 const int PH_3V_NO_MOTION_MIN_VALUE = 3330;
 const int PH_3V_NO_MOTION_MAX_VALUE = 3530;
 const int MAX_MOTIONS = 13; // maximaal aantal opeenvolgende bewegingsdetecties
-int motion_memory = 0; 
-const int HASMOVED = 0; 
+int motion_memory = 0;
+const int HASMOVED = 0;
 
 PERIODIC_RESOURCE(ph_motion, METHOD_GET , "phidget/motion_sensor", "Usage=\"..\"",CLOCK_SECOND/10);
 
@@ -783,12 +627,16 @@ void ph_motion_periodic_handler(resource_t *r)
 
   SENSORS_ACTIVATE(phidgets);
 
-  P2DIR |= 0x80;
-  P2SEL &= ~0x80;
-  P4DIR |= 0x08;
-  P4SEL &= ~0x08;
-
-  
+  // Configure 2 pins as GPIO Output pins for green and red status LEDs
+  if(!ph_motion_led_pins_configured) {
+    // P2.7
+    P2SEL &= ~0x80;
+    P2DIR |= 0x80;
+    // P4.3
+    P4SEL &= ~0x08;
+    P4DIR |= 0x08;
+    ph_motion_led_pins_configured = 1;
+  }
 
   int phidget5V = phidgets.value(PHIDGET5V_1);
   int phidget3V = phidgets.value(PHIDGET3V_2);
@@ -796,7 +644,7 @@ void ph_motion_periodic_handler(resource_t *r)
   if( (phidget5V > PH_5V_NO_MOTION_MIN_VALUE && phidget5V < PH_5V_NO_MOTION_MAX_VALUE) ||
       (phidget3V > PH_3V_NO_MOTION_MIN_VALUE && phidget3V < PH_3V_NO_MOTION_MAX_VALUE)  ) {
   	consecutive_motions = 0; // resetten
-	P2OUT |= 0x80;
+    P2OUT |= 0x80;
   	P4OUT &= ~0x08;
   } else {
   	consecutive_motions++;
@@ -813,7 +661,7 @@ void ph_motion_periodic_handler(resource_t *r)
     P4OUT |= 0x08;
     leds_toggle(LEDS_BLUE);
     memcpy(content, message, length);
-  
+
 //  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
 //  REST.set_header_etag(response, (uint8_t *)&length, 1);
 //  REST.set_response_payload(response, buffer, length);
@@ -1881,10 +1729,11 @@ PROCESS_THREAD(rest_server_example, ev, data)
 
   /* Activate the application-specific resources. */
 #if REST_RES_LED_LIGHT1
-  rest_activate_resource(&resource_led_light1);
+  // Configure P1.x to turn off LED light #1
   P1DIR |= 0xc3;
   P1SEL &= ~0xc3;
   P1OUT &= ~0xc3;
+  rest_activate_resource(&resource_led_light1);
 #endif
 #if REST_RES_LED_LIGHT2
   rest_activate_resource(&resource_led_light2);
@@ -1930,16 +1779,33 @@ PROCESS_THREAD(rest_server_example, ev, data)
 #endif
 #if REST_RES_REED
   PRINTF("activating reed sensor\n");
-  // Configure as input, enable pull-ups
-  P4SEL  |= 0x02;
-  P4REN |= 0x02;
+  // Configure pins for the two status LEDs, RED LED is on P2.6, GREEN LED is on P2.5
+  // Set as GPIO pin
+  P2SEL &= ~0x40;
+  P2SEL &= ~0x20;
+  // Set as output pin
+  P2DIR |= 0x40;
+  P2DIR |= 0x20;
+  // Configure LEDS to assume that REED sensor is open when sensor starts:
+  P2OUT |= 0x40;
+  P2OUT &= ~0x20;
+
+  // Configure pin P4.2 for REED sensor
+  // Set P4.2 to GPIO pin (set 3rd bit of P4SEL to 0)
+  P4SEL &= ~0x04;
+  // Configure P4.2 as INPUT (set 3rd bit of P4DIR to 0)
+  P4DIR &= ~0x04;
+  // Enable pullup/pulldown resistor for P4.2 (set 3rd but of P4REN to 1):
+  P4REN |= 0x04;
+  // Set pullup/pulldown resistor to pull-down for P4.2 (set 3rd bit of P4OUT to 0)
+  P4OUT &= ~0x04;
   rest_activate_periodic_resource(&periodic_resource_reed);
 #endif
 #if REST_RES_TEMP_CONDOBS
   rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
 #endif
 
-#if REST_RES_OBS_DIR 
+#if REST_RES_OBS_DIR
   rest_activate_resource(&resource_observerdir);
 #endif
 
