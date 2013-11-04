@@ -89,6 +89,19 @@ PT_THREAD(coap_blocking_request(struct request_state_t *state, process_event_t e
                                  request, chunk_handler) \
   ); \
 }
+
+PT_THREAD(coap_request(struct request_state_t *state, uip_ipaddr_t *remote_ipaddr, uint16_t remote_port,
+                                coap_packet_t *request));
+
+#define COAP_REQUEST(server_addr, server_port, request) \
+{ \
+  static struct request_state_t request_state; \
+  PT_SPAWN(process_pt, &request_state.pt, \
+           coap_request(&request_state, server_addr, server_port, \
+                                 request) \
+  ); \
+}
+
 /*-----------------------------------------------------------------------------------*/
 
 #endif /* COAP_SERVER_H_ */

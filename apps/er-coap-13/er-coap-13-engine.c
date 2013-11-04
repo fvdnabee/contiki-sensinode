@@ -592,6 +592,25 @@ PT_THREAD(coap_blocking_request(struct request_state_t *state, process_event_t e
 
   PT_END(&state->pt);
 }
+
+PT_THREAD(coap_request(struct request_state_t *state, uip_ipaddr_t *remote_ipaddr, uint16_t remote_port,
+                                coap_packet_t *request)){
+
+	coap_transaction_t *transaction = NULL;
+
+	request->mid = coap_get_mid(); // get a message ID
+	if ( (transaction = coap_new_transaction(request->mid, remote_ipaddr,
+	      remote_port)) ){ // Get a transaction from the "pool"
+    	   	transaction->packet_len = coap_serialize_message(request,transaction->packet);
+           	coap_send_transaction(transaction);
+	}else{
+    	        printf("Could not allocate transaction buffer\n");
+	}
+
+	PT_EXIT(&state->pt);
+}
+
+
 /*----------------------------------------------------------------------------*/
 /*- Engine Interface ---------------------------------------------------------*/
 /*----------------------------------------------------------------------------*/
