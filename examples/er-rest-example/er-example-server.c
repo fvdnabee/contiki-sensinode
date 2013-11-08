@@ -83,7 +83,7 @@
 #define DEBUG 1
 
 /* Push based discovery periodically sends a COAP serverInfo message to .well-known/serverPresence on a anycast adress */
-#define PUSH_BASED_DISCOVERY	  1
+#define PUSH_BASED_DISCOVERY	  0
 
 #if PUSH_BASED_DISCOVERY
  #define PUSH_DISCOVERY_INTERVAL 60 //in seconds
