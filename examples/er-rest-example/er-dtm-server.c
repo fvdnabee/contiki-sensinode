@@ -67,7 +67,7 @@
 #define REST_RES_BATTERY 	0
 #define REST_RES_RADIO 		0
 
-#define REST_RES_SERVERINFO       1
+#define REST_RES_SERVERINFO       0
 #define REST_RES_ZIG001           0
 #define REST_RES_ZIG002           0
 #define REST_RES_PH_TOUCH         0
@@ -78,6 +78,15 @@
 #define REST_RES_TEMP_CONDOBS	  0
 #define REST_RES_REED  		  	  0
 #define REST_RES_OBS_DIR	  	  0
+
+#define REST_RES_TEMP_INTERVAL 	  1
+
+PROCESS(rest_server_example, "Erbium Server");
+PROCESS(data_transfer_middleware, "Data transfer middleware");
+PROCESS(temperature_reader, "Temperature reader");
+
+static process_event_t event_temperature_read;
+static process_event_t event_change_temp_interval;
 
 /* enables PRINTF */
 #define DEBUG 1
@@ -749,7 +758,27 @@ rfid_event_handler(resource_t *r)
 }
 #endif // REST_RES_RFID
 
+#if REST_RES_TEMP_INTERVAL
+/*
+ * Resources are defined by the RESOURCE macro.
+ * Signature: resource name, the RESTful methods it handles, and its URI path (omitting the leading slash).
+ */
+RESOURCE(temp_interval, METHOD_POST, "temp_interval", "title=\"temp_interval: ?len=0..\";rt=\"Text\"");
 
+/*
+ * A handler function named [resource name]_handler must be implemented for each RESOURCE.
+ * A buffer for the response payload is provided through the buffer pointer. Simple resources can ignore
+ * preferred_size and offset, but must respect the REST_MAX_CHUNK_SIZE limit for the buffer.
+ * If a smaller block size is requested for CoAP, the REST framework automatically splits the data.
+ */
+void
+temp_interval_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{ 
+  const char *temp_intervalchar = NULL; 
+  REST.get_request_payload(request,&temp_intervalchar);
+  process_post(&data_transfer_middleware, event_change_temp_interval,atoi(temp_intervalchar));
+}
+#endif
 
 /******************************************************************************/
 #if REST_RES_HELLO
@@ -1611,11 +1640,7 @@ static uip_ds6_maddr_t * join_mcast_group(){
 }
 
 
-PROCESS(rest_server_example, "Erbium Server");
-PROCESS(data_transfer_middleware, "Data transfer middleware");
-PROCESS(temperature_reader, "Temperature reader");
 
-static process_event_t event_temperature_read;
 
 AUTOSTART_PROCESSES(&rest_server_example, &data_transfer_middleware, &temperature_reader);
 
@@ -1695,6 +1720,9 @@ PROCESS_THREAD(rest_server_example, ev, data){
 #endif
 #if REST_RES_TEMP_CONDOBS
   rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
+#endif
+#if REST_RES_TEMP_INTERVAL
+  rest_activate_resource(&resource_temp_interval);
 #endif
 #if REST_RES_OBS_DIR 
   rest_activate_resource(&resource_observerdir);
@@ -1819,7 +1847,7 @@ PROCESS_THREAD(data_transfer_middleware, ev, data){
 	PROCESS_WAIT_EVENT();  
 	
 	if(ev == event_temperature_read){
-		temperature_reading = data;
+		temperature_reading = (int)data;
 		temperature_readings_saved++;
 		
 		strcat(temperature_readings, "t");
@@ -1828,6 +1856,12 @@ PROCESS_THREAD(data_transfer_middleware, ev, data){
 		itoa(temperature_reading,temperature_readings+3+(temperature_readings_saved-1)*6,10);
 		strcat(temperature_readings, " ");
 
+	}else if(ev == event_change_temp_interval){
+		
+		temperature_forward_interval = (int)data;
+		PRINTF("Changing temperature interval to %us\n",temperature_forward_interval);
+		etimer_set(&temperature_forward_timer, CLOCK_CONF_SECOND * temperature_forward_interval);
+		
 	}else if(etimer_expired(&temperature_forward_timer)){ //forward temp readings to server
 		temperature_readings_saved = 0;
 		PRINTF("%s \n", temperature_readings);
@@ -1853,7 +1887,7 @@ PROCESS_THREAD(data_transfer_middleware, ev, data){
 
 PROCESS_THREAD(temperature_reader, ev, data){
   static struct etimer temperature_timer;
-  static int temperature_read_interval = 4; //in seconds
+  static int temperature_read_interval = 2; //in seconds
   
   unsigned int temperature_reading;
   
