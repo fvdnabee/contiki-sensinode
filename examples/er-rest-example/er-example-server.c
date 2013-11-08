@@ -165,8 +165,6 @@
 #endif
 
 
-PROCESS(rest_server_example, "Erbium Server");
-
 #if REST_RES_SERVERINFO
 /*
  * Resources are defined by the RESOURCE macro.
@@ -261,8 +259,6 @@ serverinfo_handler(void* request, void* response, uint8_t *buffer, uint16_t pref
 
 }
 #endif 
-
-
 
 #if REST_RES_ZIG001
 RESOURCE(zig001, METHOD_GET , "digital/zig001_sht11", "Usage=\"..\"");
@@ -750,6 +746,7 @@ rfid_event_handler(resource_t *r)
 
 }
 #endif // REST_RES_RFID
+
 
 
 /******************************************************************************/
@@ -1612,6 +1609,7 @@ static uip_ds6_maddr_t * join_mcast_group(){
 }
 
 
+PROCESS(rest_server_example, "Erbium Server");
 
 AUTOSTART_PROCESSES(&rest_server_example);
 
@@ -1795,3 +1793,5 @@ PROCESS_THREAD(rest_server_example, ev, data)
 
   PROCESS_END();
 }
+
+

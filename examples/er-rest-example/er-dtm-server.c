@@ -85,13 +85,7 @@
 /* Push based discovery periodically sends a COAP serverInfo message to .well-known/serverPresence on a anycast adress */
 #define PUSH_BASED_DISCOVERY	  0
 
-#if PUSH_BASED_DISCOVERY
- #define PUSH_DISCOVERY_INTERVAL 60 //in seconds
- 
- #define ANYCAST(ipaddr)   uip_ip6addr(ipaddr, 0xabab, 0, 0, 0, 0, 0, 0, 0x0001) /* ANYCAST address */
- #define LOCAL_PORT      UIP_HTONS(COAP_DEFAULT_PORT+1)
- #define REMOTE_PORT     UIP_HTONS(COAP_DEFAULT_PORT) 
-
+#define REMOTE_PORT     UIP_HTONS(COAP_DEFAULT_PORT) 
  #if WITH_COAP == 3
  #include "er-coap-03-engine.h"
  #elif WITH_COAP == 6
@@ -105,6 +99,14 @@
  #else
  #error "CoAP version defined by WITH_COAP not implemented"
  #endif
+ 
+#if PUSH_BASED_DISCOVERY
+ #define PUSH_DISCOVERY_INTERVAL 60 //in seconds
+ 
+ #define ANYCAST(ipaddr)   uip_ip6addr(ipaddr, 0xabab, 0, 0, 0, 0, 0, 0, 0x0001) /* ANYCAST address */
+ #define LOCAL_PORT      UIP_HTONS(COAP_DEFAULT_PORT+1)
+
+
 
 #endif
 #if REST_RES_TEMP_CONDOBS
@@ -1621,7 +1623,7 @@ PROCESS_THREAD(rest_server_example, ev, data){
 
   #if PUSH_BASED_DISCOVERY
    static struct etimer et;
-   static coap_packet_t request[1]; /* This way the packet can be treated as pointer as usual. */
+   static coap_packet_t coap_packet[1]; /* This way the packet can be treated as pointer as usual. */
    uip_ipaddr_t anycast_ipaddr;
    char* anycast_url = ".well-known/serverPresence";
    ANYCAST(&anycast_ipaddr);
@@ -1773,15 +1775,16 @@ PROCESS_THREAD(rest_server_example, ev, data){
 	#if PUSH_BASED_DISCOVERY //send serverInfo to .well-known/serverPresence resource on anycast address
 		else if(etimer_expired(&et)){
 		  leds_toggle(LEDS_RED);
-
-		  /* prepare request, TID is set by COAP_BLOCKING_REQUEST() */
-		  coap_init_message(request, COAP_TYPE_NON, COAP_POST, 0 );
-		  coap_set_header_uri_path(request, anycast_url);
-
+		  
 		  const char msg[] = "AL|16|A|AAAA::C30C:0:0:3|NT|L|N|sen3|I|60000";
-		  coap_set_payload(request, (uint8_t *)msg, sizeof(msg)-1);
+
+		  coap_init_message(coap_packet, COAP_TYPE_NON, COAP_POST, 0 );
+		  coap_set_header_uri_path(coap_packet, anycast_url);
+
+		  
+		  coap_set_payload(coap_packet, (uint8_t *)msg, sizeof(msg)-1);
 		
-		  COAP_REQUEST(&anycast_ipaddr, REMOTE_PORT, request); 
+		  COAP_REQUEST(&anycast_ipaddr, REMOTE_PORT, coap_packet); 
 		  etimer_reset(&et);
 		}
 	#endif
@@ -1796,17 +1799,52 @@ PROCESS_THREAD(rest_server_example, ev, data){
 }
 
 PROCESS_THREAD(data_transfer_middleware, ev, data){
+  static struct etimer temperature_forward_timer;
+  static int temperature_forward_interval = 10; //in seconds
+  
+  static char temperature_readings[REST_MAX_CHUNK_SIZE];
+  static int temperature_readings_saved = 0;
   unsigned int temperature_reading;
+  
+  static coap_packet_t coap_temp_packet[1]; /* This way the packet can be treated as pointer as usual. */
+  uip_ipaddr_t server_ipaddr; 
+  char* temp_uri = "/tempreadings";
   
   PROCESS_BEGIN();
   
+  etimer_set(&temperature_forward_timer, CLOCK_CONF_SECOND * temperature_forward_interval);
+  
   while (1){
-	  
+	
 	PROCESS_WAIT_EVENT();  
 	
 	if(ev == event_temperature_read){
 		temperature_reading = data;
-		PRINTF("DTM_process tmp: = %u\n", temperature_reading);	
+		temperature_readings_saved++;
+		
+		strcat(temperature_readings, "t");
+		itoa(temperature_readings_saved,temperature_readings+1+(temperature_readings_saved-1)*6,10);
+		strcat(temperature_readings," ");
+		itoa(temperature_reading,temperature_readings+3+(temperature_readings_saved-1)*6,10);
+		strcat(temperature_readings, " ");
+
+	}else if(etimer_expired(&temperature_forward_timer)){ //forward temp readings to server
+		temperature_readings_saved = 0;
+		PRINTF("%s \n", temperature_readings);
+		
+		//send the readings to server:
+		uip_ip6addr(&server_ipaddr, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x0001); //fill in the server IP address.
+		
+		coap_init_message(coap_temp_packet, COAP_TYPE_NON, COAP_POST, 0 );
+		coap_set_header_uri_path(coap_temp_packet, temp_uri);
+
+		  
+		coap_set_payload(coap_temp_packet, (uint8_t *)temperature_readings, sizeof(temperature_readings)-1);
+		COAP_REQUEST(&server_ipaddr, REMOTE_PORT, coap_temp_packet); 
+		
+		temperature_readings[0]='\0'; //empty string, put null char in front
+		etimer_reset(&temperature_forward_timer);
+
 	}
 
   }
@@ -1820,27 +1858,28 @@ PROCESS_THREAD(temperature_reader, ev, data){
   unsigned int temperature_reading;
   
   PROCESS_BEGIN();
- 
+  
+  
+  etimer_set(&temperature_timer, CLOCK_CONF_SECOND * temperature_read_interval);
   
   event_temperature_read = process_alloc_event();
   
   while (1){
 	// we set the timer from here every time
-	etimer_set(&temperature_timer, CLOCK_CONF_SECOND * temperature_read_interval);
 
 	PROCESS_WAIT_EVENT();
 	
 	if(etimer_expired(&temperature_timer)){
 		sht11_init();
-		//temperature_reading = (unsigned) (-39.60 + 0.01 * sht11_temp());
-		temperature_reading = 25;
-		PRINTF("temperature_process tmp: = %u\n", temperature_reading);	
+		temperature_reading = (unsigned) (-39.60 + 0.01 * sht11_temp());
 
 		/* send temperature reading to DTM using event */
 		process_post(&data_transfer_middleware, event_temperature_read, temperature_reading);
-		
+		etimer_reset(&temperature_timer);
 	}
 }
   
   PROCESS_END();
 }
+
+
