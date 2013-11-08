@@ -42,6 +42,8 @@
 #include "contiki.h"
 #include "contiki-net.h"
 
+#include "erbium.h"
+
 #include "dev/leds.h"
 #include "dev/sht11.h"
 #include "dev/i2cmaster.h" 
@@ -65,30 +67,56 @@
 #define REST_RES_BATTERY 	0
 #define REST_RES_RADIO 		0
 
-#define REST_RES_SERVERINFO       0
+#define REST_RES_SERVERINFO       1
 #define REST_RES_ZIG001           0
 #define REST_RES_ZIG002           0
 #define REST_RES_PH_TOUCH         0
 #define REST_RES_PH_SONAR         0
-#define REST_RES_PH_FLEXIFORCE    1
+#define REST_RES_PH_FLEXIFORCE    0
 #define REST_RES_PH_MOTION        0
-#define REST_RES_RFID		  		    0
-#define REST_RES_TEMP_CONDOBS	  	0
-#define REST_RES_REED  		  		  0
-#define REST_RES_OBS_DIR			    0
+#define REST_RES_RFID			  0
+#define REST_RES_TEMP_CONDOBS	  0
+#define REST_RES_REED  		  	  0
+#define REST_RES_OBS_DIR	  	  0
 
+/* enables PRINTF */
+#define DEBUG 1
+
+/* Push based discovery periodically sends a COAP serverInfo message to .well-known/serverPresence on a anycast adress */
+#define PUSH_BASED_DISCOVERY	  1
+
+#if PUSH_BASED_DISCOVERY
+ #define PUSH_DISCOVERY_INTERVAL 60 //in seconds
+ 
+ #define ANYCAST(ipaddr)   uip_ip6addr(ipaddr, 0xabab, 0, 0, 0, 0, 0, 0, 0x0001) /* ANYCAST address */
+ #define LOCAL_PORT      UIP_HTONS(COAP_DEFAULT_PORT+1)
+ #define REMOTE_PORT     UIP_HTONS(COAP_DEFAULT_PORT) 
+
+ #if WITH_COAP == 3
+ #include "er-coap-03-engine.h"
+ #elif WITH_COAP == 6
+ #include "er-coap-06-engine.h"
+ #elif WITH_COAP == 7
+ #include "er-coap-07-engine.h"
+ #elif WITH_COAP == 12
+ #include "er-coap-12-engine.h"
+ #elif WITH_COAP == 13
+ #include "er-coap-13-engine.h"
+ #else
+ #error "CoAP version defined by WITH_COAP not implemented"
+ #endif
+
+#endif
+#if REST_RES_TEMP_CONDOBS
+/* Use data from SHT11 sensor or use stored values for temperature resource */
+#define RES_TEMP_USE_SHT11_DATA 0
+#endif
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
 #warning "Compiling with static routing!"
 #include "static-routing.h"
 #endif
 
-#include "erbium.h"
-
-#if REST_RES_TEMP_CONDOBS
-/* Use data from SHT11 sensor or use stored values for temperature resource */
-#define RES_TEMP_USE_SHT11_DATA 0
-#endif
 
 #if defined (PLATFORM_HAS_BUTTON)
 #include "dev/button-sensor.h"
@@ -125,7 +153,7 @@
 #warning "Erbium example without CoAP-specifc functionality"
 #endif /* CoAP-specific example */
 
-#define DEBUG 1
+
 #if DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #define PRINT6ADDR(addr) PRINTF("[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]", ((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], ((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7], ((uint8_t *)addr)[8], ((uint8_t *)addr)[9], ((uint8_t *)addr)[10], ((uint8_t *)addr)[11], ((uint8_t *)addr)[12], ((uint8_t *)addr)[13], ((uint8_t *)addr)[14], ((uint8_t *)addr)[15])
@@ -137,7 +165,7 @@
 #endif
 
 
-PROCESS(rest_server_example, "Erbium Example Server");
+PROCESS(rest_server_example, "Erbium Server");
 
 #if REST_RES_SERVERINFO
 /*
@@ -164,7 +192,6 @@ serverinfo_handler(void* request, void* response, uint8_t *buffer, uint16_t pref
   unsigned char *serverInfoPart1="AL|16|A|";
   unsigned char *serverInfoPart2="|NT|S|N|sensor";
   unsigned char charretje[6];
-
 
   for ( i = 0; i < 8; i++)
   {
@@ -1559,10 +1586,8 @@ radio_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred
 }
 #endif
 
-//code needed for multicast group subscription:
-static uip_ds6_maddr_t *
-join_mcast_group()
-{
+/*  multicast group subscription: */
+static uip_ds6_maddr_t * join_mcast_group(){
   uip_ipaddr_t addr;
   uip_ds6_maddr_t * rv;
 
@@ -1575,7 +1600,7 @@ join_mcast_group()
    * IPHC will use stateless multicast compression for this destination
    * (M=1, DAC=0), with 32 inline bits (1E 89 AB CD)
    */
-  uip_ip6addr(&addr,0xFF1E,0,0,0,0,0,0x89,0xABCD);
+  uip_ip6addr(&addr,0xFF1E,0,0,0,0,0,0x89,0xABCD); 
   rv = uip_ds6_maddr_add(&addr);
 
   if(rv) {
@@ -1585,30 +1610,31 @@ join_mcast_group()
   }
   return rv;
 }
-//JEN
+
 
 
 AUTOSTART_PROCESSES(&rest_server_example);
 
 PROCESS_THREAD(rest_server_example, ev, data)
 {
+
+  #if PUSH_BASED_DISCOVERY
+   static struct etimer et;
+   static coap_packet_t request[1]; /* This way the packet can be treated as pointer as usual. */
+   uip_ipaddr_t anycast_ipaddr;
+   char* anycast_url = ".well-known/serverPresence";
+   ANYCAST(&anycast_ipaddr);
+  #endif
+
   PROCESS_BEGIN();
 
-  PRINTF("Starting Erbium Example Server\n");
+  PRINTF("Starting Erbium Server\n");
   
-  //joining multicast server
+  /* joining multicast server */
   if(join_mcast_group() == NULL) {
     PRINTF("Failed to join multicast group\n");
     PROCESS_EXIT();
   }
-
-#ifdef RF_CHANNEL
-  PRINTF("RF channel: %u\n", RF_CHANNEL);
-#endif
-#ifdef IEEE802154_PANID
-  PRINTF("PAN ID: 0x%04X\n", IEEE802154_PANID);
-#endif
-
   
 
 /* if static routes are used rather than RPL */
@@ -1616,6 +1642,11 @@ PROCESS_THREAD(rest_server_example, ev, data)
   set_global_address();
   configure_routing();
 #endif
+
+
+#if PUSH_BASED_DISCOVERY
+ etimer_set(&et, PUSH_DISCOVERY_INTERVAL * CLOCK_SECOND);
+#endif 
 
   /* Initialize the REST engine. */
   rest_init_engine();
@@ -1664,11 +1695,9 @@ PROCESS_THREAD(rest_server_example, ev, data)
 #if REST_RES_TEMP_CONDOBS
   rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
 #endif
-
 #if REST_RES_OBS_DIR 
   rest_activate_resource(&resource_observerdir);
 #endif
-
 #if REST_RES_HELLO
   rest_activate_resource(&resource_helloworld);
 #endif
@@ -1715,35 +1744,53 @@ PROCESS_THREAD(rest_server_example, ev, data)
   rest_activate_resource(&resource_radio);
 #endif
 
-
+  /* setting TXPOWER */
   cc2420_set_txpower(CC2420_TXPOWER_MAX);
+  
   /* Define application-specific events here. */
   while(1) {
+	  
     PROCESS_WAIT_EVENT();
-#if defined (PLATFORM_HAS_BUTTON)
-    if (ev == sensors_event && data == &button_sensor) {
-      PRINTF("BUTTON\n");
-#if REST_RES_EVENT
-      /* Call the event_handler for this application-specific event. */
-      event_event_handler(&resource_event);
-#endif
-#if REST_RES_SEPARATE && WITH_COAP>3
-      /* Also call the separate response example handler. */
-      separate_finalize_handler();
-#endif
-    }
-#if REST_RES_RFID
-    else if(ev == event_rfid_read){ 
-      PRINTF("RFID Event\n");
-      /* Call the event_handler for this application-specific event. */
-      rfid_event_handler(&resource_rfid);
-    }
-#endif
+    
+	#if defined (PLATFORM_HAS_BUTTON)
+		if (ev == sensors_event && data == &button_sensor) {
+		PRINTF("BUTTON\n");
+		#if REST_RES_EVENT
+			/* Call the event_handler for this application-specific event. */
+			event_event_handler(&resource_event);
+		#endif
+		#if REST_RES_SEPARATE && WITH_COAP>3
+			/* Also call the separate response example handler. */
+			separate_finalize_handler();
+		#endif
+		}
+	#endif /* PLATFORM_HAS_BUTTON */
+	#if REST_RES_RFID
+		else if(ev == event_rfid_read){ 
+			/* Call the event_handler for this application-specific event. */
+			rfid_event_handler(&resource_rfid);
+		}
+	#endif
+	#if PUSH_BASED_DISCOVERY //send serverInfo to .well-known/serverPresence resource on anycast address
+		else if(etimer_expired(&et)){
+		  leds_toggle(LEDS_RED);
+
+		  /* prepare request, TID is set by COAP_BLOCKING_REQUEST() */
+		  coap_init_message(request, COAP_TYPE_NON, COAP_POST, 0 );
+		  coap_set_header_uri_path(request, anycast_url);
+
+		  const char msg[] = "AL|16|A|AAAA::C30C:0:0:3|NT|L|N|sen3|I|60000";
+		  coap_set_payload(request, (uint8_t *)msg, sizeof(msg)-1);
+		
+		  COAP_REQUEST(&anycast_ipaddr, REMOTE_PORT, request); 
+		  etimer_reset(&et);
+		}
+	#endif
     else{
       PRINTF("Unknown Event\n");
     }
 
-#endif /* PLATFORM_HAS_BUTTON */
+
   } /* while (1) */
 
   PROCESS_END();
