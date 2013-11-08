@@ -79,7 +79,7 @@
 #define REST_RES_REED  		  	  0
 #define REST_RES_OBS_DIR	  	  0
 
-#define REST_RES_TEMP_INTERVAL 	  1
+#define REST_RES_DTM 	  1
 
 PROCESS(rest_server_example, "Erbium Server");
 PROCESS(data_transfer_middleware, "Data transfer middleware");
@@ -758,12 +758,12 @@ rfid_event_handler(resource_t *r)
 }
 #endif // REST_RES_RFID
 
-#if REST_RES_TEMP_INTERVAL
+#if REST_RES_DTM
 /*
  * Resources are defined by the RESOURCE macro.
  * Signature: resource name, the RESTful methods it handles, and its URI path (omitting the leading slash).
  */
-RESOURCE(temp_interval, METHOD_POST, "temp_interval", "title=\"temp_interval: ?len=0..\";rt=\"Text\"");
+RESOURCE(dtm, METHOD_POST, "dtm", "title=\"dtm: ?temp_interval=X, POST\";rt=\"Control\"");
 
 /*
  * A handler function named [resource name]_handler must be implemented for each RESOURCE.
@@ -772,11 +772,18 @@ RESOURCE(temp_interval, METHOD_POST, "temp_interval", "title=\"temp_interval: ?l
  * If a smaller block size is requested for CoAP, the REST framework automatically splits the data.
  */
 void
-temp_interval_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+dtm_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 { 
   const char *temp_intervalchar = NULL; 
-  REST.get_request_payload(request,&temp_intervalchar);
-  process_post(&data_transfer_middleware, event_change_temp_interval,atoi(temp_intervalchar));
+  size_t len = 0;
+  
+  if (len=REST.get_query_variable(request, "temp_interval", &temp_intervalchar)){
+	  //PRINTF("received temp_interval: %u\n",atoi(temp_intervalchar));
+	  process_post(&data_transfer_middleware, event_change_temp_interval,atoi(temp_intervalchar));
+  } else {
+	  REST.set_response_status(response, REST.status.BAD_REQUEST);
+  }
+  
 }
 #endif
 
@@ -1721,8 +1728,8 @@ PROCESS_THREAD(rest_server_example, ev, data){
 #if REST_RES_TEMP_CONDOBS
   rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
 #endif
-#if REST_RES_TEMP_INTERVAL
-  rest_activate_resource(&resource_temp_interval);
+#if REST_RES_DTM
+  rest_activate_resource(&resource_dtm);
 #endif
 #if REST_RES_OBS_DIR 
   rest_activate_resource(&resource_observerdir);
