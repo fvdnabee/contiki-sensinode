@@ -79,6 +79,7 @@
 
 #define REST_RES_FAN		  1
 
+#define PUSH_BASED_DISCOVERY	  1
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
 #warning "Compiling with static routing!"
@@ -112,6 +113,27 @@
 #endif
 #if REST_REST_RFID
 #include "dev/uart0.h"
+#endif
+
+#if PUSH_BASED_DISCOVERY
+ #define ANYCAST(ipaddr)   uip_ip6addr(ipaddr, 0xabab, 0, 0, 0, 0, 0, 0, 0x0001) /* ANYCAST address */
+ #define LOCAL_PORT      UIP_HTONS(COAP_DEFAULT_PORT+1)
+ #define REMOTE_PORT     UIP_HTONS(COAP_DEFAULT_PORT)
+ #define TOGGLE_INTERVAL 60
+
+ #if WITH_COAP == 3
+ #include "er-coap-03-engine.h"
+ #elif WITH_COAP == 6
+ #include "er-coap-06-engine.h"
+ #elif WITH_COAP == 7
+ #include "er-coap-07-engine.h"
+ #elif WITH_COAP == 12
+ #include "er-coap-12-engine.h"
+ #elif WITH_COAP == 13
+ #include "er-coap-13-engine.h"
+ #else
+ #error "CoAP version defined by WITH_COAP not implemented"
+ #endif
 #endif
 
 /* For CoAP-specific example: not required for normal RESTful Web service. */
@@ -1268,8 +1290,9 @@ temp_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_
   static char msg[11];
 
 #if RES_TEMP_USE_SHT11_DATA // use sht11 sensor for temperature resource
-  i2c_disable(); //http://comments.gmane.org/gmane.os.contiki.devel/14819
-  sht11_init();
+
+  uint32_t sht11ret = sht11_temp();
+  PRINTF("sht11ret=%d", sht11ret);
   tmp = (unsigned) (-39.60 + 0.01 * sht11_temp());
 #else // use stored values for temperature resource
   tmp = data[data_iterator++ % 2008];
@@ -1297,41 +1320,42 @@ temp_periodic_handler(resource_t *r)
   static uint16_t obs_counter = 0;
   static uint32_t tmp; // state of temperature resource at the moment
 
-// LED Pin Setup
-P1DIR |= 0xc3;
-P1SEL &= ~0xc3;
-P2DIR |= 0xe9;
-P2SEL &= ~0xe9;
-P4DIR |= 0x08;
-P4SEL &= ~0x08;
+  // LED Pin Setup
+  P1DIR |= 0xc3;
+  P1SEL &= ~0xc3;
+  P2DIR |= 0xe9;
+  P2SEL &= ~0xe9;
+  P4DIR |= 0x08;
+  P4SEL &= ~0x08;
 
-// LED Pin Reset
-P1OUT &= 0x0;
-P2OUT &= 0x0;
-P4OUT &= ~0x08;
+  // LED Pin Reset
+  P1OUT &= 0x0;
+  P2OUT &= 0x0;
+  P4OUT &= ~0x08;
 
 
-// LED Select
-if(tmp > 15){
-  P2OUT |= 0x80; //LED01
-  if(tmp > 17){
-    P4OUT |= 0x8; //LED02
-    if(tmp > 19){
-      P2OUT |= 0xC0; //LED03
-      if(tmp > 21){
-        P2OUT |= 0xE0; //LED04
-        if(tmp > 23){
-          P2OUT |= 0xE8; //LED05
-          if(tmp > 25){
-            P1OUT |= 0x2; //LED06
-            if(tmp > 27){
-              P1OUT |= 0x3; //LED07
-              if(tmp > 29){
-                P2OUT |= 0xe9; //LED08
-                if(tmp > 31){
-                  P1OUT |= 0x63; //LED09
-                  if (tmp > 33){
-                    P1OUT |= 0xE3; //LED10
+  // LED Select
+  if(tmp > 15){
+    P2OUT |= 0x80; //LED01
+    if(tmp > 17){
+      P4OUT |= 0x8; //LED02
+      if(tmp > 19){
+        P2OUT |= 0xC0; //LED03
+        if(tmp > 21){
+          P2OUT |= 0xE0; //LED04
+          if(tmp > 23){
+            P2OUT |= 0xE8; //LED05
+            if(tmp > 25){
+              P1OUT |= 0x2; //LED06
+              if(tmp > 27){
+                P1OUT |= 0x3; //LED07
+                if(tmp > 29){
+                  P2OUT |= 0xe9; //LED08
+                  if(tmp > 31){
+                    P1OUT |= 0x63; //LED09
+                    if (tmp > 33){
+                      P1OUT |= 0xE3; //LED10
+                    }
                   }
                 }
               }
@@ -1341,17 +1365,15 @@ if(tmp > 15){
       }
     }
   }
-}
 
 #if RES_TEMP_USE_SHT11_DATA // use sht11 sensor for temperature resource
-	i2c_disable(); //http://comments.gmane.org/gmane.os.contiki.devel/14819
- 	sht11_init();
 	tmp = (unsigned) (-39.60 + 0.01 * sht11_temp());
-	PRINTF("/%s: retreived temperature value from sensor\n", r->url);
+	PRINTF("Retrieved temperature value from sensor %d\n", tmp);
 #else // use stored values for temperature resource
-	tmp = data[data_iterator++ % 100];	
+	tmp = data[data_iterator++ % 100];
 	PRINTF("==>from data array:val[%u%100] = %u\n", data_iterator-1, data[data_iterator-1]);
 #endif
+  PRINTF("b");
 
   coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
 
@@ -1359,7 +1381,7 @@ if(tmp > 15){
 
   coap_set_header_max_age(notification, max_age);
 
-  coap_set_payload(notification, content, snprintf(content, sizeof(content), "Temperature: %u", tmp));
+  coap_set_payload(notification, content, snprintf(content, sizeof(content), "%u", tmp));
 
   ++obs_counter; 
 
@@ -1693,6 +1715,14 @@ AUTOSTART_PROCESSES(&rest_server_example);
 
 PROCESS_THREAD(rest_server_example, ev, data)
 {
+#if PUSH_BASED_DISCOVERY
+   static struct etimer et;
+   static coap_packet_t request[1]; /* This way the packet can be treated as pointer as usual. */
+   uip_ipaddr_t anycast_ipaddr;
+   char* anycast_url = ".well-known/serverPresence";
+   ANYCAST(&anycast_ipaddr);
+#endif
+
   PROCESS_BEGIN();
 
   PRINTF("Starting Erbium Example Server\n");
@@ -1716,6 +1746,11 @@ PROCESS_THREAD(rest_server_example, ev, data)
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
   set_global_address();
   configure_routing();
+#endif
+
+  /* timer to push serverInfo to anycast address */
+#if PUSH_BASED_DISCOVERY
+   etimer_set(&et, TOGGLE_INTERVAL * CLOCK_SECOND);
 #endif
 
   /* Initialize the REST engine. */
@@ -1766,6 +1801,10 @@ PROCESS_THREAD(rest_server_example, ev, data)
   rest_activate_periodic_resource(&periodic_resource_reed);
 #endif
 #if REST_RES_TEMP_CONDOBS
+#if RES_TEMP_USE_SHT11_DATA
+	i2c_disable(); //http://comments.gmane.org/gmane.os.contiki.devel/14819
+ 	sht11_init();
+#endif
   rest_activate_periodic_resource(&periodic_resource_temp); // Use conditional observe resource
 #endif
 
@@ -1841,6 +1880,25 @@ PROCESS_THREAD(rest_server_example, ev, data)
       PRINTF("RFID Event\n");
       /* Call the event_handler for this application-specific event. */
       rfid_event_handler(&resource_rfid);
+    }
+#endif
+#if PUSH_BASED_DISCOVERY //send serverInfo to .well-known/serverPresence resource on anycast address
+    else if(etimer_expired(&et)){
+      leds_toggle(LEDS_RED);
+
+      /* prepare request, TID is set by COAP_BLOCKING_REQUEST() */
+      coap_init_message(request, COAP_TYPE_NON, COAP_POST, 0 );
+      coap_set_header_uri_path(request, anycast_url);
+
+      const char msg[] = "AL|16|A|AAAA::C30C:0:0:6|NT|L|N|sen6|I|60000";
+      coap_set_payload(request, (uint8_t *)msg, sizeof(msg)-1);
+
+
+      //PRINT6ADDR(&anycast_ipaddr);
+      //PRINTF(" : %u\n", UIP_HTONS(REMOTE_PORT));
+	
+      COAP_REQUEST(&anycast_ipaddr, REMOTE_PORT, request); 
+      etimer_reset(&et);
     }
 #endif
     else{

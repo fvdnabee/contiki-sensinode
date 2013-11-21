@@ -85,6 +85,7 @@
 #define REST_RES_LED_LIGHT3	  1
 #define REST_RES_LED_LIGHT4	  1
 
+#define PUSH_BASED_DISCOVERY	  1	
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
 #warning "Compiling with static routing!"
@@ -121,6 +122,27 @@
 #endif
 #if REST_RES_LED_LIGHT1 || REST_RES_LED_LIGHT2 || REST_RES_LED_LIGHT3 || REST_RES_LED_LIGHT4
 #include "led-light-handler.h"
+#endif
+
+#if PUSH_BASED_DISCOVERY
+ #define ANYCAST(ipaddr)   uip_ip6addr(ipaddr, 0xabab, 0, 0, 0, 0, 0, 0, 0x0001) /* ANYCAST address */
+ #define LOCAL_PORT      UIP_HTONS(COAP_DEFAULT_PORT+1)
+ #define REMOTE_PORT     UIP_HTONS(COAP_DEFAULT_PORT)
+ #define TOGGLE_INTERVAL 60
+
+ #if WITH_COAP == 3
+ #include "er-coap-03-engine.h"
+ #elif WITH_COAP == 6
+ #include "er-coap-06-engine.h"
+ #elif WITH_COAP == 7
+ #include "er-coap-07-engine.h"
+ #elif WITH_COAP == 12
+ #include "er-coap-12-engine.h"
+ #elif WITH_COAP == 13
+ #include "er-coap-13-engine.h"
+ #else
+ #error "CoAP version defined by WITH_COAP not implemented"
+ #endif
 #endif
 
 /* For CoAP-specific example: not required for normal RESTful Web service. */
@@ -1695,6 +1717,14 @@ AUTOSTART_PROCESSES(&rest_server_example);
 
 PROCESS_THREAD(rest_server_example, ev, data)
 {
+#if PUSH_BASED_DISCOVERY
+   static struct etimer et;
+   static coap_packet_t request[1]; /* This way the packet can be treated as pointer as usual. */
+   uip_ipaddr_t anycast_ipaddr;
+   char* anycast_url = ".well-known/serverPresence";
+   ANYCAST(&anycast_ipaddr);
+#endif
+
   PROCESS_BEGIN();
 
   PRINTF("Starting Erbium Example Server\n");
@@ -1718,6 +1748,11 @@ PROCESS_THREAD(rest_server_example, ev, data)
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
   set_global_address();
   configure_routing();
+#endif
+
+  /* timer to push serverInfo to anycast address */
+#if PUSH_BASED_DISCOVERY
+   etimer_set(&et, TOGGLE_INTERVAL * CLOCK_SECOND);
 #endif
 
   /* Initialize the REST engine. */
@@ -1866,7 +1901,26 @@ PROCESS_THREAD(rest_server_example, ev, data)
       rfid_event_handler(&resource_rfid);
     }
 #endif
-    else{
+#if PUSH_BASED_DISCOVERY //send serverInfo to .well-known/serverPresence resource on anycast address
+    else if(etimer_expired(&et)){
+      leds_toggle(LEDS_RED);
+
+      /* prepare request, TID is set by COAP_BLOCKING_REQUEST() */
+      coap_init_message(request, COAP_TYPE_NON, COAP_POST, 0 );
+      coap_set_header_uri_path(request, anycast_url);
+
+      const char msg[] = "AL|16|A|AAAA::C30C:0:0:4|NT|L|N|sen4|I|60000";
+      coap_set_payload(request, (uint8_t *)msg, sizeof(msg)-1);
+
+
+      //PRINT6ADDR(&anycast_ipaddr);
+      //PRINTF(" : %u\n", UIP_HTONS(REMOTE_PORT));
+	
+      COAP_REQUEST(&anycast_ipaddr, REMOTE_PORT, request); 
+      etimer_reset(&et);
+    }
+#endif
+   else{
       PRINTF("Unknown Event\n");
     }
 
