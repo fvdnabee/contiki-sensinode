@@ -132,7 +132,6 @@
  #else
  #error "CoAP version defined by WITH_COAP not implemented"
  #endif
-
 #endif
 
 /* For CoAP-specific example: not required for normal RESTful Web service. */
@@ -1597,13 +1596,14 @@ AUTOSTART_PROCESSES(&rest_server_example);
 
 PROCESS_THREAD(rest_server_example, ev, data)
 {
-  #if PUSH_BASED_DISCOVERY
+#if PUSH_BASED_DISCOVERY
    static struct etimer et;
    static coap_packet_t request[1]; /* This way the packet can be treated as pointer as usual. */
    uip_ipaddr_t anycast_ipaddr;
    char* anycast_url = ".well-known/serverPresence";
    ANYCAST(&anycast_ipaddr);
-  #endif
+#endif
+
   PROCESS_BEGIN();
 
   PRINTF("Starting Erbium Example Server\n");
@@ -1630,9 +1630,9 @@ PROCESS_THREAD(rest_server_example, ev, data)
 #endif
 
   /* timer to push serverInfo to anycast address */
-  #if PUSH_BASED_DISCOVERY
+#if PUSH_BASED_DISCOVERY
    etimer_set(&et, TOGGLE_INTERVAL * CLOCK_SECOND);
-  #endif 
+#endif
 
   /* Initialize the REST engine. */
   rest_init_engine();
@@ -1773,7 +1773,7 @@ PROCESS_THREAD(rest_server_example, ev, data)
       rfid_event_handler(&resource_rfid);
     }
 #endif
-    #if PUSH_BASED_DISCOVERY //send serverInfo to .well-known/serverPresence resource on anycast address
+#if PUSH_BASED_DISCOVERY //send serverInfo to .well-known/serverPresence resource on anycast address
     else if(etimer_expired(&et)){
       leds_toggle(LEDS_RED);
 
@@ -1792,7 +1792,7 @@ PROCESS_THREAD(rest_server_example, ev, data)
       etimer_reset(&et);
     }
 #endif
-else{
+    else{
       PRINTF("Unknown Event\n");
     }
 

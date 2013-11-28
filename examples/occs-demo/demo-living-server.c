@@ -71,6 +71,7 @@
 #define REST_RES_PH_TOUCH         0
 #define REST_RES_PH_SONAR         0
 #define REST_RES_PH_FLEXIFORCE    1
+#define REST_RES_PH_FLEXIFORCE_RAW    0
 #define REST_RES_PH_MOTION        0
 #define REST_RES_RFID		  0
 #define REST_RES_TEMP_CONDOBS	  0
@@ -83,6 +84,7 @@
 
 #define REST_RES_BUZZER		  1
 
+#define PUSH_BASED_DISCOVERY	  1
 
 #if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
 #warning "Compiling with static routing!"
@@ -119,6 +121,27 @@
 #endif
 #if REST_RES_LED_LIGHT1 || REST_RES_LED_LIGHT2 || REST_RES_LED_LIGHT3 || REST_RES_LED_LIGHT4
 #include "led-light-handler.h"
+#endif
+
+#if PUSH_BASED_DISCOVERY
+ #define ANYCAST(ipaddr)   uip_ip6addr(ipaddr, 0xabab, 0, 0, 0, 0, 0, 0, 0x0001) /* ANYCAST address */
+ #define LOCAL_PORT      UIP_HTONS(COAP_DEFAULT_PORT+1)
+ #define REMOTE_PORT     UIP_HTONS(COAP_DEFAULT_PORT)
+ #define TOGGLE_INTERVAL 60
+
+ #if WITH_COAP == 3
+ #include "er-coap-03-engine.h"
+ #elif WITH_COAP == 6
+ #include "er-coap-06-engine.h"
+ #elif WITH_COAP == 7
+ #include "er-coap-07-engine.h"
+ #elif WITH_COAP == 12
+ #include "er-coap-12-engine.h"
+ #elif WITH_COAP == 13
+ #include "er-coap-13-engine.h"
+ #else
+ #error "CoAP version defined by WITH_COAP not implemented"
+ #endif
 #endif
 
 /* For CoAP-specific example: not required for normal RESTful Web service. */
@@ -596,41 +619,15 @@ int retrieve_flexiforce_value(int type) {
   return value;
 }
 
-// This resource returns the raw value from the sensor
-RESOURCE(ph_flexiforce, METHOD_GET , "phidget/flexiforce_sensor", "Usage=\"..?ph=3|5\"");
-void ph_flexiforce_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
-{
-  char message[REST_MAX_CHUNK_SIZE];
-  int length;
-
-  const char *ph = NULL;
-  REST.get_query_variable(request, "ph", &ph);
-  int type = atoi(ph);
-  int value = retrieve_flexiforce_value(type);
-
-  if (value < FLEXIFORCE_MIN_VALUE) {
-    length = sprintf(message, "Sensor niet ingedrukt");
-  } else {
-    length = sprintf(message, "Sensor ingedrukt (als aangesloten): %d", value);
-  }
-
-  if(length>=0) {
-    memcpy(buffer, message, length);
-  }
-  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
-  REST.set_header_etag(response, (uint8_t *)&length, 1);
-  REST.set_response_payload(response, buffer, length);
-}
-
-// This resource returns yes when pressure is detected and no when not, it is
-// also observable
+// This resource returns 1 when pressure is detected and 0 when not, it is also observable
+static uint32_t last_notified_flexi_status = -1; // 0 when no pressure, 1 when pressure
 PERIODIC_RESOURCE(ph_flexiforce_obs, METHOD_GET, "phidget/flexiforce_sensor/status", "title=\"Pressure detected (1|0)?\";obs", 1*CLOCK_SECOND);
 void ph_flexiforce_obs_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
 {
-
-
   int value = retrieve_flexiforce_value(3); // Assume 3V phidget
-  int status = (value < FLEXIFORCE_MIN_VALUE) ? 0 : 1; // C doesn't support boolean
+  int status = (value < FLEXIFORCE_MIN_VALUE) ? 0 : 1; // C doesn't support boolean, so use int instead
+
+  last_notified_flexi_status = status;
 
   REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
   REST.set_response_payload(response, (status) ? "1" : "0", 1);
@@ -645,26 +642,30 @@ void
 ph_flexiforce_obs_periodic_handler(resource_t *r)
 {
   static uint16_t obs_counter = 0;
-
-  ++obs_counter;
-
   P4DIR |= 0x08;
   P4SEL &= ~0x08;
-  
+
   P2DIR |= 0x80;
   P2SEL &= ~0x80;
+
+  ++obs_counter;
   // Retrieve value
   int value = retrieve_flexiforce_value(3); // Assume 3V phidget
+  int status = (value < FLEXIFORCE_MIN_VALUE) ? 0 : 1; // C doesn't support boolean
+  PRINTF("retrieve_flexiforce_value(3) = %d\n", value);
+
+  if(status == last_notified_flexi_status)
+    return; // no change: return
 
   /* Build notification. */
   coap_packet_t notification[1]; /* This way the packet can be treated as pointer as usual. */
   coap_init_message(notification, COAP_TYPE_NON, CONTENT_2_05, 0 );
-  if (value < FLEXIFORCE_MIN_VALUE) {
-    coap_set_payload(notification, "no", 2);
+  coap_set_payload(notification, (status) ? "1" : "0", 1);
+  // Toggle LEDs
+  if (status == 0) { // value is smaller than threshold
     P4OUT |= 0x08;
     P2OUT &= ~0x80;
   } else {
-    coap_set_payload(notification, "yes", 3);
     P2OUT |= 0x80;
     P4OUT &= ~0x08;
   }
@@ -675,7 +676,32 @@ ph_flexiforce_obs_periodic_handler(resource_t *r)
 #else
   REST.notify_subscribers(r, obs_counter, notification);
 #endif
+  last_notified_flexi_status = status;
 }
+
+#if REST_RES_PH_FLEXIFORCE_RAW
+// This resource returns the raw value from the sensor
+RESOURCE(ph_flexiforce, METHOD_GET , "phidget/flexiforce_sensor/raw", "Usage=\"..?ph=3|5\"");
+void ph_flexiforce_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  char message[REST_MAX_CHUNK_SIZE];
+  int length;
+
+  const char *ph = NULL;
+  REST.get_query_variable(request, "ph", &ph);
+  int type = atoi(ph);
+  int value = retrieve_flexiforce_value(type);
+
+  length = sprintf(message, "%d", value);
+
+  if(length>=0) {
+    memcpy(buffer, message, length);
+  }
+  REST.set_header_content_type(response, REST.type.TEXT_PLAIN);
+  REST.set_header_etag(response, (uint8_t *)&length, 1);
+  REST.set_response_payload(response, buffer, length);
+}
+#endif // REST_RES_PH_FLEXIFORCE_RAW
 #endif // REST_RES_PH_FLEXIFORCE
 
 #if REST_RES_PH_MOTION
@@ -1712,6 +1738,13 @@ AUTOSTART_PROCESSES(&rest_server_example);
 
 PROCESS_THREAD(rest_server_example, ev, data)
 {
+#if PUSH_BASED_DISCOVERY
+   static struct etimer et;
+   static coap_packet_t request[1]; /* This way the packet can be treated as pointer as usual. */
+   uip_ipaddr_t anycast_ipaddr;
+   char* anycast_url = ".well-known/serverPresence";
+   ANYCAST(&anycast_ipaddr);
+#endif
   PROCESS_BEGIN();
 
   PRINTF("Starting Erbium Example Server\n");
@@ -1736,6 +1769,11 @@ PROCESS_THREAD(rest_server_example, ev, data)
   set_global_address();
   configure_routing();
 #endif
+
+  /* timer to push serverInfo to anycast address */
+  #if PUSH_BASED_DISCOVERY
+   etimer_set(&et, TOGGLE_INTERVAL * CLOCK_SECOND);
+  #endif 
 
   /* Initialize the REST engine. */
   rest_init_engine();
@@ -1877,6 +1915,21 @@ PROCESS_THREAD(rest_server_example, ev, data)
       PRINTF("RFID Event\n");
       /* Call the event_handler for this application-specific event. */
       rfid_event_handler(&resource_rfid);
+    }
+#endif
+#if PUSH_BASED_DISCOVERY //send serverInfo to .well-known/serverPresence resource on anycast address
+    else if(etimer_expired(&et)){
+      leds_toggle(LEDS_RED);
+
+      /* prepare request, TID is set by COAP_BLOCKING_REQUEST() */
+      coap_init_message(request, COAP_TYPE_NON, COAP_POST, 0 );
+      coap_set_header_uri_path(request, anycast_url);
+
+      const char msg[] = "AL|16|A|AAAA::C30C:0:0:5|NT|L|N|sen5|I|60000";
+      coap_set_payload(request, (uint8_t *)msg, sizeof(msg)-1);
+
+      COAP_REQUEST(&anycast_ipaddr, REMOTE_PORT, request);
+      etimer_reset(&et);
     }
 #endif
     else{
